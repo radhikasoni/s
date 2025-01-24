@@ -657,6 +657,37 @@ if menu_option == "Predict with LSTM":
         st.markdown('<h2 class="subheader">Predicted and Actual Data</h2>', unsafe_allow_html=True)
         st.write(test_predictions_baseline)
 
+        fig = go.Figure()
+        # Add predicted price line
+        fig.add_trace(go.Scatter(
+            x=test_predictions_baseline['Datetime'],
+            y=test_predictions_baseline[stock_symbol + '_predicted'],
+            mode='lines',
+            name=stock_symbol + ' Predicted Price',
+            line=dict(color='red')
+        ))
+
+        fig.add_trace(go.Scatter(
+            x=test_predictions_baseline['Datetime'],
+            y=test_predictions_baseline[stock_symbol + '_actual'],
+            mode='lines',
+            name=stock_symbol + ' Actual Price',
+            line=dict(color='green')
+        ))
+
+        # Update layout
+        fig.update_layout(
+            title= stock_symbol + ' Prediction vs Actual',
+            xaxis_title='Datetime',
+            yaxis_title='Price',
+            template='plotly_dark',
+            legend=dict(yanchor="top", y=0.99, xanchor="left", x=0.01),
+            height=600
+        )
+
+        # Display in Streamlit
+        st.plotly_chart(fig, use_container_width=True)
+
         model = tf.keras.models.load_model(os.path.join(PROJECT_FOLDER, "close_model_weights.h5"))
 
         # Adjust the number of features dynamically
