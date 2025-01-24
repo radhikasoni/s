@@ -275,8 +275,8 @@ elif data_option == "Select date range manually":
 # Plot 50-day and 100-day Simple Moving Averages
 sma_50 = stock_data['Close'].rolling(window=50).mean()
 sma_100 = stock_data['Close'].rolling(window=100).mean()
-# stock_data['SMA_50'] = sma_50
-stock_data['SMA_100'] = sma_100
+stock_data['SMA_50'] = sma_50
+# stock_data['SMA_100'] = sma_100
 
 # Plot 50-day and 100-day Exponential Moving Averages
 ema_50 = stock_data['Close'].ewm(span=50, adjust=False).mean()
@@ -596,7 +596,7 @@ if menu_option == "Predict with LSTM":
     # Set the data frame index using column Date
     test_data = test_data.set_index('Datetime')
 
-    train_scaled = scaler.fit_transform(training_data[['Open', 'High', 'Low', 'Close', 'Volume', 'RSI', 'MACD', 'VWAP', 'SMA_100',  'ATR']])
+    train_scaled = scaler.fit_transform(training_data[['Open', 'High', 'Low', 'Close', 'Volume', 'RSI', 'MACD', 'VWAP', 'SMA_50',  'ATR']])
 
     # Training Data Transformation
     x_train = []
@@ -608,7 +608,7 @@ if menu_option == "Predict with LSTM":
     x_train, y_train = np.array(x_train), np.array(y_train)
     total_data = pd.concat((training_data, test_data), axis=0)
     inputs = total_data[len(total_data) - len(test_data) - TIME_STEPS:]
-    test_scaled = scaler.fit_transform(inputs[['Open', 'High', 'Low', 'Close', 'Volume', 'RSI', 'MACD', 'VWAP', 'SMA_100', 'ATR']])
+    test_scaled = scaler.fit_transform(inputs[['Open', 'High', 'Low', 'Close', 'Volume', 'RSI', 'MACD', 'VWAP', 'SMA_50', 'ATR']])
     # Testing Data Transformation
     x_test = []
     y_test = []
