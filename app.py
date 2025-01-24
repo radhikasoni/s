@@ -160,7 +160,7 @@ if stock_symbol:
     except:
         st.warning(f"'{stock_symbol}' is not a valid stock ticker symbol. Please enter a valid ticker.")
 
-EPOCHS = 1
+EPOCHS = 50
 BATCH_SIZE = 32
 TIME_STEPS = 60
 PROJECT_FOLDER = st.session_state.project_folder
@@ -654,6 +654,9 @@ if menu_option == "Predict with LSTM":
         test_predictions_baseline.set_index('Datetime')
         test_predictions_baseline.to_csv(os.path.join(PROJECT_FOLDER, 'predictions.csv'))
 
+        st.markdown('<h2 class="subheader">Predicted and Actual Data</h2>', unsafe_allow_html=True)
+        st.write(test_predictions_baseline)
+
         model = tf.keras.models.load_model(os.path.join(PROJECT_FOLDER, "close_model_weights.h5"))
 
         # Adjust the number of features dynamically
@@ -765,39 +768,44 @@ if menu_option == "Predict with LSTM":
             st.success("Model training success")
             print("st.session_state: ", st.session_state)
 
-            fig = go.Figure()
+            
 
-            # Add predicted price line
-            fig.add_trace(go.Scatter(
-                x=test_predictions_baseline['Datetime'],
-                y=test_predictions_baseline[stock_symbol + '_predicted'],
-                mode='lines',
-                name=stock_symbol + ' Predicted Price',
-                line=dict(color='red')
-            ))
+        test_predictions_baseline=pd.read_csv(os.path.join(PROJECT_FOLDER, 'predictions.csv'))
+        st.markdown('<h2 class="subheader">Predicted and Actual Data</h2>', unsafe_allow_html=True)
+        st.write(test_predictions_baseline)
 
-            fig.add_trace(go.Scatter(
-                x=test_predictions_baseline['Datetime'],
-                y=test_predictions_baseline[stock_symbol + '_actual'],
-                mode='lines',
-                name=stock_symbol + ' Actual Price',
-                line=dict(color='green')
-            ))
+        fig = go.Figure()
+        # Add predicted price line
+        fig.add_trace(go.Scatter(
+            x=test_predictions_baseline['Datetime'],
+            y=test_predictions_baseline[stock_symbol + '_predicted'],
+            mode='lines',
+            name=stock_symbol + ' Predicted Price',
+            line=dict(color='red')
+        ))
 
-            # Update layout
-            fig.update_layout(
-                title= stock_symbol + ' Prediction vs Actual',
-                xaxis_title='Datetime',
-                yaxis_title='Price',
-                template='plotly_dark',
-                legend=dict(yanchor="top", y=0.99, xanchor="left", x=0.01),
-                height=600
-            )
+        fig.add_trace(go.Scatter(
+            x=test_predictions_baseline['Datetime'],
+            y=test_predictions_baseline[stock_symbol + '_actual'],
+            mode='lines',
+            name=stock_symbol + ' Actual Price',
+            line=dict(color='green')
+        ))
 
-            # Display in Streamlit
-            st.plotly_chart(fig, use_container_width=True)
+        # Update layout
+        fig.update_layout(
+            title= stock_symbol + ' Prediction vs Actual',
+            xaxis_title='Datetime',
+            yaxis_title='Price',
+            template='plotly_dark',
+            legend=dict(yanchor="top", y=0.99, xanchor="left", x=0.01),
+            height=600
+        )
 
-            print("prediction is finished")
+        # Display in Streamlit
+        st.plotly_chart(fig, use_container_width=True)
+
+        print("prediction is finished")
 
         model = tf.keras.models.load_model(os.path.join(PROJECT_FOLDER, "close_model_weights.h5"))
 
