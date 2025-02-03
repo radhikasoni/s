@@ -932,9 +932,9 @@ if stock_symbol:
 if stock_symbol != "":
     if menu_option == "Day Trading Forcast":
         try:
-            # Fetch data for the last 8 days with a 1-minute interval
+            # Fetch data for the last 8 days with a 5-minute interval
             end_date = datetime.datetime.now()
-            start_date = end_date - timedelta(days=59)
+            start_date = end_date - timedelta(days=58)
             last_15_day = end_date - timedelta(days=15)
             validation_date = pd.to_datetime(last_15_day)  
 
