@@ -31,12 +31,16 @@ sma_100 = 0
 sma_50 = 0
 ema_100 = 0
 ema_50 = 0
-
+WINDOW = 5
 if "previous_symbol" not in st.session_state:
     st.session_state.previous_symbol = ""
 
 if "project_folder" not in st.session_state:
     st.session_state.project_folder = ""
+
+if "last_menu_option" not in st.session_state:
+    st.session_state.last_menu_option = None
+
 
 def generate_market_time_range_1_minute(start_date, periods):
     """
@@ -175,12 +179,12 @@ def closeRSIPrediction(close_data):
     try:
         if 'Predicted Close Price' in close_data.columns:
             Close = close_data['Predicted Close Price'].values
-            RSI14 = RSI(Close, n=14)
+            RSI3 = RSI(Close, n=3)
             
             # Ensure lengths match
-            RSI14 = RSI14[:len(close_data)]
+            RSI3 = RSI3[:len(close_data)]
             
-            close_data['RSI14'] = RSI14
+            close_data['RSI3'] = RSI3
 
             # Plot RSI using Plotly
             fig = go.Figure()
@@ -188,9 +192,9 @@ def closeRSIPrediction(close_data):
             # Add RSI Line
             fig.add_trace(go.Scatter(
                 x=close_data['Datetime'],
-                y=close_data['RSI14'],
+                y=close_data['RSI3'],
                 mode='lines',
-                name='RSI (14-period)',
+                name='RSI (3-period)',
                 line=dict(color='blue', width=2)
             ))
 
@@ -471,6 +475,11 @@ menu_option = st.sidebar.radio(
     ("🧠 Day Trading Forcast", "📈 Swing Trading Forcast"),
     help="Select one of the prediction trading to forecast stock prices."
 )
+
+# if st.session_state.last_menu_option != menu_option:
+#     st.session_state.last_menu_option = menu_option
+#     st.experimental_rerun()  # Trigger a rerun when the option is switched
+
 
 # Parse the selected option to extract the model
 if "Day" in menu_option:
@@ -932,18 +941,13 @@ if stock_symbol:
 if stock_symbol != "":
     if menu_option == "Day Trading Forcast":
         try:
-            # Fetch data for the last 8 days with a 5-minute interval
+            # Fetch data for the last 8 days with a 1-minute interval
             end_date = datetime.datetime.now()
-            start_date = end_date - timedelta(days=58)
+            start_date = end_date - timedelta(days=59)
             last_15_day = end_date - timedelta(days=15)
             validation_date = pd.to_datetime(last_15_day)  
 
-            stock_data = yf.download(
-                stock_symbol,
-                start=start_date.strftime("%Y-%m-%d"),
-                end=end_date.strftime("%Y-%m-%d"),
-                interval="5m"
-            )
+            stock_data = yf.download(tickers=stock_symbol, period="1mo", interval="5m")
             if stock_data.empty:
                 st.error("No data found for the given interval. Please try a different symbol.")
             else:
@@ -954,7 +958,7 @@ if stock_symbol != "":
                 stock_data.to_csv(os.path.join(PROJECT_FOLDER, 'downloaded_data_'+ stock_symbol+'.csv'), index=False)
                 stock_data=pd.read_csv(os.path.join(PROJECT_FOLDER, 'downloaded_data_'+ stock_symbol +'.csv'))
                 stock_data['Close'] = pd.to_numeric(stock_data['Close'], errors='coerce')
-                st.success(f"Download last 60 days of precise data (5-minute interval)")
+                st.success(f"Download last 30 days of precise data (5-minute interval)")
 
                 stockInfo(stock_symbol)
                 stockGraph(stock_data)
@@ -1165,14 +1169,9 @@ if stock_symbol != "":
                 daily_high_low = stock_data.groupby("Date").agg(Daily_High=("High", "max"), Daily_Low=("Low", "min")).reset_index()
                 stock_data = pd.merge(stock_data, daily_rsi_stats, on='Date', how='left')
                 
-                # prediction_size_menu = st.sidebar.radio(
-                #     "Select Prediction time limit",
-                #     ("Next 15-minute prediction", "Next 1-hour prediction", "Today prediction", "Next day prediction", "Next 2-day prediction"),
-                #     help="Select one of the prediction timeline to forecast stock prices."
-                # )
                 prediction_size_menu = st.sidebar.radio(
                     "Select Prediction time limit",
-                    ("Today prediction", "Next day prediction", "Next 2-day prediction"),
+                    ("Next 15-minute prediction", "Next 1-hour prediction", "Today prediction", "Next day prediction", "Next 2-day prediction"),
                     help="Select one of the prediction timeline to forecast stock prices."
                 )
 
@@ -1188,24 +1187,30 @@ if stock_symbol != "":
                 # and each hour has 12 intervals (5 minutes each).
                 # So, 6 * 12 = 72 intervals per day, and for 3 days, the total periods are 216
                 PREDICT_START_DATE = datetime.datetime.today()
-                # if prediction_size_menu == "Next 15-minute prediction":
-                #     PREDICTED_TIME = 3
-                #     stock_data['SMA'] = sma_5
-                # elif prediction_size_menu == "Next 1-hour prediction":
-                #     PREDICTED_TIME = 12
-                #     stock_data['SMA'] = sma_5
-                if prediction_size_menu == "Today prediction":
+                if prediction_size_menu == "Next 15-minute prediction":
+                    PREDICTED_TIME = 3
+                    stock_data['SMA'] = sma_5
+                    WINDOW = 5
+                elif prediction_size_menu == "Next 1-hour prediction":
+                    PREDICTED_TIME = 12
+                    stock_data['SMA'] = sma_5
+                    WINDOW = 5
+                elif prediction_size_menu == "Today prediction":
                     PREDICTED_TIME = 72
                     stock_data['SMA'] = sma_5
+                    WINDOW = 20
                 elif prediction_size_menu == "Next day prediction":
                     PREDICTED_TIME = 144
                     stock_data['SMA'] = sma_20
+                    WINDOW = 20
                 elif prediction_size_menu == "Next 2-day prediction":
                     PREDICTED_TIME = 216
                     stock_data['SMA'] = sma_20
+                    WINDOW = 20
                 else:
                     PREDICTED_TIME = 3
                     stock_data['SMA'] = sma_5
+                    WINDOW = 20
 
                 # Drop rows with NaN values
                 stock_data=stock_data[['Datetime','Date','Open','High','Low','Close','TR','VwapSign','CheckVolume','DynVol','B/S_Signal','Reversal','Vol_Sell_Signal','Volume','Avg_Volume','VWAP','RSI','MACD','SMA','ATR','BB_lower', 'BB_upper']]
@@ -1218,7 +1223,7 @@ if stock_symbol != "":
 
                 # Display paginated data
                 stock_data["DynVol"] = stock_data["DynVol"].astype(str)
-                st.dataframe(stock_data)
+                st.dataframe(stock_data.tail(50))
 
                 # Create figure
                 fig = go.Figure()
@@ -1274,7 +1279,7 @@ if stock_symbol != "":
                 # Set the data frame index using column Date
                 test_data = test_data.set_index('Datetime')
 
-                train_scaled = scaler.fit_transform(training_data[['Open','High','Low','Close','TR','Volume','Avg_Volume','VWAP','RSI','MACD','SMA','ATR','BB_lower', 'BB_upper']])
+                train_scaled = scaler.fit_transform(training_data[['Open','High','Low','Close','Volume','VWAP','RSI','MACD','SMA','ATR','BB_lower', 'BB_upper', 'TR', 'Avg_Volume']])
                 
                 # Training Data Transformation
                 x_train = []
@@ -1286,7 +1291,7 @@ if stock_symbol != "":
                 x_train, y_train = np.array(x_train), np.array(y_train)
                 total_data = pd.concat((training_data, test_data), axis=0)
                 inputs = total_data[len(total_data) - len(test_data) - TIME_STEPS:]
-                test_scaled = scaler.fit_transform(inputs[['Open','High','Low','Close','TR','Volume','Avg_Volume','VWAP','RSI','MACD','SMA','ATR','BB_lower', 'BB_upper']])
+                test_scaled = scaler.fit_transform(inputs[['Open','High','Low','Close','Volume','VWAP','RSI','MACD','SMA','ATR','BB_lower', 'BB_upper', 'TR', 'Avg_Volume']])
                 
                 # Testing Data Transformation
                 x_test = []
@@ -1333,9 +1338,10 @@ if stock_symbol != "":
                     test_predictions_baseline.to_csv(os.path.join(PROJECT_FOLDER, 'predictions.csv'))
 
                     st.markdown('<h2 class="subheader">Predicted and Actual Data</h2>', unsafe_allow_html=True)
-                    st.write(test_predictions_baseline)
+                    
+                    st.write(test_predictions_baseline.tail(50))
                     # print(test_predictions_baseline)
-                    plotActualPredictedValue(test_predictions_baseline)
+                    plotActualPredictedValue(test_predictions_baseline.tail(50))
 
                     model = tf.keras.models.load_model(os.path.join(PROJECT_FOLDER, "close_model_weights.h5"))
 
@@ -1355,6 +1361,8 @@ if stock_symbol != "":
                         predictions,  # Predicted Close (assuming it is the first column of predictions)
                         np.zeros((len(predictions), 10))  # Placeholder for remaining features
                     )))[:, 3]  # Here we select index 3 for 'Close' if 'Close' is the fourth column
+                    print("PREDICTED_TIME: ", PREDICTED_TIME)
+                    print("predictions: ", predictions)
                 
                     predicted_dates = generate_market_time_range_5_minute(PREDICT_START_DATE, PREDICTED_TIME)
                     
@@ -1365,9 +1373,15 @@ if stock_symbol != "":
                     })
                     close_data.to_csv(os.path.join(PROJECT_FOLDER, "predicted_data.csv"), index=False)
 
+                    close_data['SMA'] = close_data['Predicted Close Price'].rolling(WINDOW).mean()
+                    close_data['Upper_Band'] = close_data['SMA'] + (close_data['Predicted Close Price'].rolling(WINDOW).std() * 2)
+                    close_data['Lower_Band'] = close_data['SMA'] - (close_data['Predicted Close Price'].rolling(WINDOW).std() * 2)
+
+                    close_data['Trend'] = np.where(close_data['Predicted Close Price'] > close_data['Upper_Band'], 'Uptrend',
+                                np.where(close_data['Predicted Close Price'] < close_data['Lower_Band'], 'Downtrend', 'Neutral'))
+
                     st.markdown('<h2 class="subheader">Predicted Close Price</h2>', unsafe_allow_html=True)
                     st.write(close_data)
-
                     # Create the plot using Plotly
                     close_fig = go.Figure()
 
@@ -1380,19 +1394,54 @@ if stock_symbol != "":
                         line=dict(color='red', width=2)
                     ))
 
+                    # Add Bollinger Bands
+                    close_fig.add_trace(go.Scatter(
+                        x=close_data['Datetime'],
+                        y=close_data['Upper_Band'],
+                        mode='lines',
+                        name='Upper Bollinger Band',
+                        line=dict(color='blue', width=1, dash='dash')
+                    ))
+
+                    close_fig.add_trace(go.Scatter(
+                        x=close_data['Datetime'],
+                        y=close_data['Lower_Band'],
+                        mode='lines',
+                        name='Lower Bollinger Band',
+                        line=dict(color='blue', width=1, dash='dash')
+                    ))
+
+                    # Highlight Trends (Uptrend = Green, Downtrend = Red)
+                    close_fig.add_trace(go.Scatter(
+                        x=close_data['Datetime'][close_data['Trend'] == 'Uptrend'],
+                        y=close_data['Predicted Close Price'][close_data['Trend'] == 'Uptrend'],
+                        mode='markers+text',
+                        name='Uptrend',
+                        marker=dict(color='green', size=8, symbol='triangle-up'),
+                        text="UP",
+                        textposition="top center"
+                    ))
+
+                    close_fig.add_trace(go.Scatter(
+                        x=close_data['Datetime'][close_data['Trend'] == 'Downtrend'],
+                        y=close_data['Predicted Close Price'][close_data['Trend'] == 'Downtrend'],
+                        mode='markers+text',
+                        name='Downtrend',
+                        marker=dict(color='red', size=8, symbol='triangle-down'),
+                        text="DOWN",
+                        textposition="top center"
+                    ))
+
                     # Customize layout
                     close_fig.update_layout(
-                        title="Predicted Close Prices",
-                        xaxis=dict(
-                            title="Datetime",
-                        ),
-                        yaxis=dict(
-                            title="Close Price"
-                        ),
+                        title="Predicted Close Prices with Bollinger Bands & Trend Detection",
+                        xaxis=dict(title="Datetime"),
+                        yaxis=dict(title="Predicted Close Price"),
                         template="plotly_white",
                         legend=dict(yanchor="top", y=0.99, xanchor="left", x=0.01),
                         height=600
                     )
+
 
                     # Add gridlines and rotation for x-axis labels
                     close_fig.update_xaxes(
@@ -1456,6 +1505,7 @@ if stock_symbol != "":
 
                     predicted_value=pd.read_csv(os.path.join(PROJECT_FOLDER, 'predictions.csv'))
                     predicted_value = predicted_value.drop(columns=['Unnamed: 0', 'Datetime.1'], errors='ignore')
+                    predicted_value = predicted_value.tail(50)
                     st.markdown('<h2 class="subheader">Predicted and Actual Data</h2>', unsafe_allow_html=True)
                     st.write(predicted_value)
 
@@ -1490,9 +1540,17 @@ if stock_symbol != "":
                         'Predicted Close Price': predicted_close,
                     })
                     close_data.to_csv(os.path.join(PROJECT_FOLDER, "predicted_data.csv"), index=False)
+                    close_data['SMA'] = close_data['Predicted Close Price'].rolling(WINDOW).mean()
+                    close_data['Upper_Band'] = close_data['SMA'] + (close_data['Predicted Close Price'].rolling(WINDOW).std() * 2)
+                    close_data['Lower_Band'] = close_data['SMA'] - (close_data['Predicted Close Price'].rolling(WINDOW).std() * 2)
+
+                    close_data['Trend'] = np.where(close_data['Predicted Close Price'] > close_data['Upper_Band'], 'Uptrend',
+                                np.where(close_data['Predicted Close Price'] < close_data['Lower_Band'], 'Downtrend', 'Neutral'))
+
 
                     st.markdown('<h2 class="subheader">Predicted Close Price</h2>', unsafe_allow_html=True)
                     st.write(close_data)
+
                     # Create the plot using Plotly
                     close_fig = go.Figure()
 
@@ -1505,15 +1563,49 @@ if stock_symbol != "":
                         line=dict(color='red', width=2)
                     ))
 
+                    # Add Bollinger Bands
+                    close_fig.add_trace(go.Scatter(
+                        x=close_data['Datetime'],
+                        y=close_data['Upper_Band'],
+                        mode='lines',
+                        name='Upper Bollinger Band',
+                        line=dict(color='blue', width=1, dash='dash')
+                    ))
+
+                    close_fig.add_trace(go.Scatter(
+                        x=close_data['Datetime'],
+                        y=close_data['Lower_Band'],
+                        mode='lines',
+                        name='Lower Bollinger Band',
+                        line=dict(color='blue', width=1, dash='dash')
+                    ))
+
+                    # Highlight Trends (Uptrend = Green, Downtrend = Red)
+                    close_fig.add_trace(go.Scatter(
+                        x=close_data['Datetime'][close_data['Trend'] == 'Uptrend'],
+                        y=close_data['Predicted Close Price'][close_data['Trend'] == 'Uptrend'],
+                        mode='markers+text',
+                        name='Uptrend',
+                        marker=dict(color='green', size=8, symbol='triangle-up'),
+                        text="UP",
+                        textposition="top center"
+                    ))
+
+                    close_fig.add_trace(go.Scatter(
+                        x=close_data['Datetime'][close_data['Trend'] == 'Downtrend'],
+                        y=close_data['Predicted Close Price'][close_data['Trend'] == 'Downtrend'],
+                        mode='markers+text',
+                        name='Downtrend',
+                        marker=dict(color='red', size=8, symbol='triangle-down'),
+                        text="DOWN",
+                        textposition="top center"
+                    ))
+
                     # Customize layout
                     close_fig.update_layout(
-                        title="Predicted Close Prices",
-                        xaxis=dict(
-                            title="Datetime",
-                        ),
-                        yaxis=dict(
-                            title="Close Price"
-                        ),
+                        title="Predicted Close Prices with Bollinger Bands & Trend Detection",
+                        xaxis=dict(title="Datetime"),
+                        yaxis=dict(title="Predicted Close Price"),
                         template="plotly_white",
                         legend=dict(yanchor="top", y=0.99, xanchor="left", x=0.01),
                         height=600
@@ -1621,7 +1713,7 @@ if stock_symbol != "":
                         st.markdown('<h2 class="subheader">Stock Prices with Indicator Data</h2>', unsafe_allow_html=True)
 
                         stock_data.to_csv(os.path.join(PROJECT_FOLDER, 'data_'+stock_symbol+'.csv'), index=False)
-                        st.write(stock_data)
+                        st.write(stock_data.tail(50))
 
                         # Create a subplot figure with 3 rows
                         fig = go.Figure()
@@ -1741,9 +1833,9 @@ if stock_symbol != "":
                             test_predictions_baseline.to_csv(os.path.join(PROJECT_FOLDER, 'predictions.csv'))
 
                             st.markdown('<h2 class="subheader">Predicted and Actual Data</h2>', unsafe_allow_html=True)
-                            st.write(test_predictions_baseline)
+                            st.write(test_predictions_baseline.tail(50))
                             # print(test_predictions_baseline)
-                            plotActualPredictedValue(test_predictions_baseline)
+                            plotActualPredictedValue(test_predictions_baseline.tail(50))
 
                             model = tf.keras.models.load_model(os.path.join(PROJECT_FOLDER, "close_model_weights.h5"))
 
@@ -1772,6 +1864,12 @@ if stock_symbol != "":
                                 'Predicted Close Price': predicted_close,
                             })
                             close_data.to_csv(os.path.join(PROJECT_FOLDER, "predicted_data.csv"), index=False)
+                            close_data['SMA_Short'] = close_data['Predicted Close Price'].rolling(window=5).mean()
+                            close_data['SMA_Long'] = close_data['Predicted Close Price'].rolling(window=10).mean()
+
+                            close_data['Trend'] = np.where(close_data['SMA_Short'] > close_data['SMA_Long'], 'Uptrend',
+                                        np.where(close_data['SMA_Short'] < close_data['SMA_Long'], 'Downtrend', 'Neutral'))
+
 
                             st.markdown('<h2 class="subheader">Predicted Close Price</h2>', unsafe_allow_html=True)
                             st.write(close_data)
@@ -1788,15 +1886,46 @@ if stock_symbol != "":
                                 line=dict(color='red', width=2)
                             ))
 
-                            # Customize layout
+                            # Plot SMA Short (5-day)
+                            close_fig.add_trace(go.Scatter(
+                                x=close_data['Datetime'], y=close_data['SMA_Short'],
+                                mode='lines', name='SMA Short (5-day)',
+                                line=dict(color='blue', width=1, dash='dot')
+                            ))
+
+                            # Plot SMA Long (10-day)
+                            close_fig.add_trace(go.Scatter(
+                                x=close_data['Datetime'], y=close_data['SMA_Long'],
+                                mode='lines', name='SMA Long (10-day)',
+                                line=dict(color='green', width=1, dash='dot')
+                            ))
+
+                            # Highlight Uptrends & Downtrends
+                            close_fig.add_trace(go.Scatter(
+                                x=close_data['Datetime'][close_data['Trend'] == 'Uptrend'],
+                                y=close_data['Predicted Close Price'][close_data['Trend'] == 'Uptrend'],
+                                mode='markers+text',
+                                name='Uptrend',
+                                marker=dict(color='green', size=8, symbol='triangle-up'),
+                                text="UP",
+                                textposition="top center"
+                            ))
+
+                            close_fig.add_trace(go.Scatter(
+                                x=close_data['Datetime'][close_data['Trend'] == 'Downtrend'],
+                                y=close_data['Predicted Close Price'][close_data['Trend'] == 'Downtrend'],
+                                mode='markers+text',
+                                name='Downtrend',
+                                marker=dict(color='red', size=8, symbol='triangle-down'),
+                                text="DOWN",
+                                textposition="top center"
+                            ))
+
+                            # Customize Layout
                             close_fig.update_layout(
-                                title="Predicted Close Prices",
-                                xaxis=dict(
-                                    title="Datetime",
-                                ),
-                                yaxis=dict(
-                                    title="Close Price"
-                                ),
+                                title="Predicted Close Prices with SMA Trend Detection",
+                                xaxis=dict(title="Datetime"),
+                                yaxis=dict(title="Close Price"),
                                 template="plotly_white",
                                 legend=dict(yanchor="top", y=0.99, xanchor="left", x=0.01),
                                 height=600
@@ -1865,9 +1994,9 @@ if stock_symbol != "":
                             predicted_value=pd.read_csv(os.path.join(PROJECT_FOLDER, 'predictions.csv'))
                             predicted_value = predicted_value.drop(columns=['Unnamed: 0', 'Datetime.1'], errors='ignore')
                             st.markdown('<h2 class="subheader">Predicted and Actual Data</h2>', unsafe_allow_html=True)
-                            st.write(predicted_value)
+                            st.write(predicted_value.tail(50))
 
-                            plotActualPredictedValue(predicted_value)
+                            plotActualPredictedValue(predicted_value.tail(50))
 
                             print("prediction is finished")
 
@@ -1898,6 +2027,13 @@ if stock_symbol != "":
                                 'Predicted Close Price': predicted_close,
                             })
                             close_data.to_csv(os.path.join(PROJECT_FOLDER, "predicted_data.csv"), index=False)
+                            close_data.to_csv(os.path.join(PROJECT_FOLDER, "predicted_data.csv"), index=False)
+                            close_data['SMA_Short'] = close_data['Predicted Close Price'].rolling(window=5).mean()
+                            close_data['SMA_Long'] = close_data['Predicted Close Price'].rolling(window=10).mean()
+
+                            close_data['Trend'] = np.where(close_data['SMA_Short'] > close_data['SMA_Long'], 'Uptrend',
+                                        np.where(close_data['SMA_Short'] < close_data['SMA_Long'], 'Downtrend', 'Neutral'))
+
 
                             st.markdown('<h2 class="subheader">Predicted Close Price</h2>', unsafe_allow_html=True)
                             st.write(close_data)
@@ -1913,15 +2049,46 @@ if stock_symbol != "":
                                 line=dict(color='red', width=2)
                             ))
 
-                            # Customize layout
+                                                        # Plot SMA Short (5-day)
+                            close_fig.add_trace(go.Scatter(
+                                x=close_data['Datetime'], y=close_data['SMA_Short'],
+                                mode='lines', name='SMA Short (5-day)',
+                                line=dict(color='blue', width=1, dash='dot')
+                            ))
+
+                            # Plot SMA Long (10-day)
+                            close_fig.add_trace(go.Scatter(
+                                x=close_data['Datetime'], y=close_data['SMA_Long'],
+                                mode='lines', name='SMA Long (10-day)',
+                                line=dict(color='green', width=1, dash='dot')
+                            ))
+
+                            # Highlight Uptrends & Downtrends
+                            close_fig.add_trace(go.Scatter(
+                                x=close_data['Datetime'][close_data['Trend'] == 'Uptrend'],
+                                y=close_data['Predicted Close Price'][close_data['Trend'] == 'Uptrend'],
+                                mode='markers+text',
+                                name='Uptrend',
+                                marker=dict(color='green', size=8, symbol='triangle-up'),
+                                text="UP",
+                                textposition="top center"
+                            ))
+
+                            close_fig.add_trace(go.Scatter(
+                                x=close_data['Datetime'][close_data['Trend'] == 'Downtrend'],
+                                y=close_data['Predicted Close Price'][close_data['Trend'] == 'Downtrend'],
+                                mode='markers+text',
+                                name='Downtrend',
+                                marker=dict(color='red', size=8, symbol='triangle-down'),
+                                text="DOWN",
+                                textposition="top center"
+                            ))
+
+                            # Customize Layout
                             close_fig.update_layout(
-                                title="Predicted Close Prices",
-                                xaxis=dict(
-                                    title="Datetime",
-                                ),
-                                yaxis=dict(
-                                    title="Close Price"
-                                ),
+                                title="Predicted Close Prices with SMA Trend Detection",
+                                xaxis=dict(title="Datetime"),
+                                yaxis=dict(title="Close Price"),
                                 template="plotly_white",
                                 legend=dict(yanchor="top", y=0.99, xanchor="left", x=0.01),
                                 height=600
