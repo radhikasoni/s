@@ -1396,15 +1396,10 @@ if stock_symbol != "":
 
                     # Perform inverse scaling on predicted values
                     predictions = model.predict(x_test)
-                    print("predictions: ", predictions)
                     # predictions = predictions[:PTEDICTED_TIME]
                     # y_test = y_test[:PTEDICTED_TIME]
                     
                     # Get current time and the next 15 minutes
-
-                    print("PREDICTED_TIME: ", PREDICTED_TIME)
-                    print("PREDICT_START_DATE: ", PREDICT_START_DATE)
-
                     if prediction_size_menu == "Next 15-minute prediction" or prediction_size_menu == "Next 1-hour prediction":
                         predicted_dates = generate_market_time_range(PREDICT_START_DATE, PREDICTED_TIME, 5)
                     else:
