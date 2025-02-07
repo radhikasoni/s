@@ -84,6 +84,50 @@ def generate_market_time_range_5_minute(start_date, periods):
         current_date += timedelta(days=1)  # Move to the next day
     return pd.DatetimeIndex(timestamps)
 
+
+# def generate_market_time_range(start_date, periods, interval_minutes):
+#     """
+#     Generates a range of timestamps within stock market hours (9:15 AM to 3:30 PM) for a given number of periods.
+#     Each period corresponds to the specified interval in minutes (e.g., 15 minutes or 1 hour).
+    
+#     Args:
+#         start_date (datetime): The starting datetime.
+#         periods (int): Number of periods to generate.
+#         interval_minutes (int): Time interval in minutes (e.g., 15 for 15-minute prediction).
+    
+#     Returns:
+#         pd.DatetimeIndex: A Pandas DatetimeIndex of the generated timestamps.
+#     """
+#     market_open = time(9, 15)   # 9:15 AM
+#     market_close = time(15, 30) # 3:30 PM
+#     timestamps = []
+#     current_datetime = start_date
+
+#     count = 0
+#     while count < periods:
+#         # Ensure we start within market hours
+#         if current_datetime.time() < market_open:
+#             current_datetime = datetime.combine(current_datetime.date(), market_open)
+#         elif current_datetime.time() > market_close:
+#             current_datetime = datetime.combine(current_datetime.date() + timedelta(days=1), market_open)
+        
+#         # Generate timestamps within trading hours
+#         while current_datetime.time() <= market_close and count < periods:
+#             timestamps.append(current_datetime)
+#             current_datetime += timedelta(minutes=interval_minutes)
+#             count += 1
+            
+#             # Stop if next timestamp exceeds market close
+#             if current_datetime.time() > market_close:
+#                 current_datetime = datetime.combine(current_datetime.date() + timedelta(days=1), market_open)
+    
+#     return pd.DatetimeIndex(timestamps)
+
+# Function to generate time range
+def generate_market_time_range(start_time, num_intervals, interval_minutes):
+    return [start_time + datetime.timedelta(minutes=i * interval_minutes) for i in range(num_intervals)]
+
+
 def generate_market_time_range_daily(start_date, days):
     """
     Generates a range of timestamps for the next `days` trading days.
@@ -1183,31 +1227,38 @@ if stock_symbol != "":
                     </div>
                 """, unsafe_allow_html=True)
 
-                # You are predicting for the next 3 days. Each day has 6 hours of trading time (from 9:15 AM to 3:30 PM),
-                # and each hour has 12 intervals (5 minutes each).
+                # You are predicting for the next 3 days. 
+                # Each day has 6 hours of trading time (from 9:15 AM to 3:30 PM),
+                # and each hour has 12 intervals (5 minutes each). For 15 minute of prediction, PREDICTED_TIME is 3
                 # So, 6 * 12 = 72 intervals per day, and for 3 days, the total periods are 216
-                PREDICT_START_DATE = datetime.datetime.today()
+                
                 if prediction_size_menu == "Next 15-minute prediction":
+                    PREDICT_START_DATE = datetime.datetime.now()
                     PREDICTED_TIME = 3
                     stock_data['SMA'] = sma_5
                     WINDOW = 5
                 elif prediction_size_menu == "Next 1-hour prediction":
+                    PREDICT_START_DATE = datetime.datetime.now()
                     PREDICTED_TIME = 12
                     stock_data['SMA'] = sma_5
                     WINDOW = 5
                 elif prediction_size_menu == "Today prediction":
+                    PREDICT_START_DATE = datetime.datetime.today()
                     PREDICTED_TIME = 72
                     stock_data['SMA'] = sma_5
                     WINDOW = 20
                 elif prediction_size_menu == "Next day prediction":
+                    PREDICT_START_DATE = datetime.now() + timedelta(days=1)
                     PREDICTED_TIME = 144
                     stock_data['SMA'] = sma_20
                     WINDOW = 20
                 elif prediction_size_menu == "Next 2-day prediction":
+                    PREDICT_START_DATE = datetime.now() + timedelta(days=2)
                     PREDICTED_TIME = 216
                     stock_data['SMA'] = sma_20
                     WINDOW = 20
                 else:
+                    PREDICT_START_DATE = datetime.datetime.now()
                     PREDICTED_TIME = 3
                     stock_data['SMA'] = sma_5
                     WINDOW = 20
@@ -1350,8 +1401,20 @@ if stock_symbol != "":
 
                     # Perform inverse scaling on predicted values
                     predictions = model.predict(x_test)
+                    print("predictions: ", predictions)
                     # predictions = predictions[:PTEDICTED_TIME]
                     # y_test = y_test[:PTEDICTED_TIME]
+                    
+                    # Get current time and the next 15 minutes
+
+                    print("PREDICTED_TIME: ", PREDICTED_TIME)
+                    print("PREDICT_START_DATE: ", PREDICT_START_DATE)
+
+                    if prediction_size_menu == "Next 15-minute prediction" or prediction_size_menu == "Next 1-hour prediction":
+                        predicted_dates = generate_market_time_range(PREDICT_START_DATE, PREDICTED_TIME, 5)
+                    else:
+                        predicted_dates = generate_market_time_range_5_minute(PREDICT_START_DATE, PREDICTED_TIME)
+
                     predictions = predictions[-PREDICTED_TIME:]
                     y_test = y_test[-PREDICTED_TIME:]
 
@@ -1361,10 +1424,6 @@ if stock_symbol != "":
                         predictions,  # Predicted Close (assuming it is the first column of predictions)
                         np.zeros((len(predictions), 10))  # Placeholder for remaining features
                     )))[:, 3]  # Here we select index 3 for 'Close' if 'Close' is the fourth column
-                    print("PREDICTED_TIME: ", PREDICTED_TIME)
-                    print("predictions: ", predictions)
-                
-                    predicted_dates = generate_market_time_range_5_minute(PREDICT_START_DATE, PREDICTED_TIME)
                     
                     # Add predictions and actual values to test_data
                     close_data = pd.DataFrame({
@@ -1532,8 +1591,11 @@ if stock_symbol != "":
                         np.zeros((len(predictions), 10))  # Placeholder for remaining features
                     )))[:, 3]  # Here we select index 3 for 'Close' if 'Close' is the fourth column
 
-                    predicted_dates = generate_market_time_range_5_minute(PREDICT_START_DATE, PREDICTED_TIME)
-                    
+                    if prediction_size_menu == "Next 15-minute prediction" or prediction_size_menu == "Next 1-hour prediction":
+                        predicted_dates = generate_market_time_range(PREDICT_START_DATE, PREDICTED_TIME, 5)
+                    else:
+                        predicted_dates = generate_market_time_range_5_minute(PREDICT_START_DATE, PREDICTED_TIME)
+
                     # Add predictions and actual values to test_data
                     close_data = pd.DataFrame({
                         'Datetime': predicted_dates,
