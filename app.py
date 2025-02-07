@@ -85,48 +85,43 @@ def generate_market_time_range_5_minute(start_date, periods):
     return pd.DatetimeIndex(timestamps)
 
 
-# def generate_market_time_range(start_date, periods, interval_minutes):
-#     """
-#     Generates a range of timestamps within stock market hours (9:15 AM to 3:30 PM) for a given number of periods.
-#     Each period corresponds to the specified interval in minutes (e.g., 15 minutes or 1 hour).
+def generate_market_time_range(start_date, periods, interval_minutes):
+    """
+    Generates a range of timestamps within stock market hours (9:15 AM to 3:30 PM) for a given number of periods.
+    Each period corresponds to the specified interval in minutes (e.g., 15 minutes or 1 hour).
     
-#     Args:
-#         start_date (datetime): The starting datetime.
-#         periods (int): Number of periods to generate.
-#         interval_minutes (int): Time interval in minutes (e.g., 15 for 15-minute prediction).
+    Args:
+        start_date (datetime): The starting datetime.
+        periods (int): Number of periods to generate.
+        interval_minutes (int): Time interval in minutes (e.g., 15 for 15-minute prediction).
     
-#     Returns:
-#         pd.DatetimeIndex: A Pandas DatetimeIndex of the generated timestamps.
-#     """
-#     market_open = time(9, 15)   # 9:15 AM
-#     market_close = time(15, 30) # 3:30 PM
-#     timestamps = []
-#     current_datetime = start_date
+    Returns:
+        pd.DatetimeIndex: A Pandas DatetimeIndex of the generated timestamps.
+    """
+    market_open = time(9, 15)   # 9:15 AM
+    market_close = time(15, 30) # 3:30 PM
+    timestamps = []
+    current_datetime = start_date
 
-#     count = 0
-#     while count < periods:
-#         # Ensure we start within market hours
-#         if current_datetime.time() < market_open:
-#             current_datetime = datetime.combine(current_datetime.date(), market_open)
-#         elif current_datetime.time() > market_close:
-#             current_datetime = datetime.combine(current_datetime.date() + timedelta(days=1), market_open)
+    count = 0
+    while count < periods:
+        # Ensure we start within market hours
+        if current_datetime.time() < market_open:
+            current_datetime = datetime.datetime.combine(current_datetime.date(), market_open)
+        elif current_datetime.time() > market_close:
+            current_datetime = datetime.datetime.combine(current_datetime.date() + timedelta(days=1), market_open)
         
-#         # Generate timestamps within trading hours
-#         while current_datetime.time() <= market_close and count < periods:
-#             timestamps.append(current_datetime)
-#             current_datetime += timedelta(minutes=interval_minutes)
-#             count += 1
+        # Generate timestamps within trading hours
+        while current_datetime.time() <= market_close and count < periods:
+            timestamps.append(current_datetime)
+            current_datetime += timedelta(minutes=interval_minutes)
+            count += 1
             
-#             # Stop if next timestamp exceeds market close
-#             if current_datetime.time() > market_close:
-#                 current_datetime = datetime.combine(current_datetime.date() + timedelta(days=1), market_open)
+            # Stop if next timestamp exceeds market close
+            if current_datetime.time() > market_close:
+                current_datetime = datetime.datetime.combine(current_datetime.date() + timedelta(days=1), market_open)
     
-#     return pd.DatetimeIndex(timestamps)
-
-# Function to generate time range
-def generate_market_time_range(start_time, num_intervals, interval_minutes):
-    return [start_time + datetime.timedelta(minutes=i * interval_minutes) for i in range(num_intervals)]
-
+    return pd.DatetimeIndex(timestamps)
 
 def generate_market_time_range_daily(start_date, days):
     """
@@ -1274,7 +1269,7 @@ if stock_symbol != "":
 
                 # Display paginated data
                 stock_data["DynVol"] = stock_data["DynVol"].astype(str)
-                st.dataframe(stock_data.tail(50))
+                st.dataframe(stock_data.tail(50).sort_values(by=stock_data.columns[0], ascending=False))
 
                 # Create figure
                 fig = go.Figure()
@@ -1316,7 +1311,7 @@ if stock_symbol != "":
                 # Show plot
                 st.plotly_chart(fig, use_container_width=True)
 
-                stockIndicatorForIntraday(stock_data)
+                # stockIndicatorForIntraday(stock_data)
 
                 menu_option_trained = st.radio(
                     "Choose an option:", 
@@ -1390,7 +1385,7 @@ if stock_symbol != "":
 
                     st.markdown('<h2 class="subheader">Predicted and Actual Data</h2>', unsafe_allow_html=True)
                     
-                    st.write(test_predictions_baseline.tail(50))
+                    st.write(test_predictions_baseline.tail(50).sort_values(by=test_predictions_baseline.columns[0], ascending=False)) 
                     # print(test_predictions_baseline)
                     plotActualPredictedValue(test_predictions_baseline.tail(50))
 
@@ -1566,7 +1561,7 @@ if stock_symbol != "":
                     predicted_value = predicted_value.drop(columns=['Unnamed: 0', 'Datetime.1'], errors='ignore')
                     predicted_value = predicted_value.tail(50)
                     st.markdown('<h2 class="subheader">Predicted and Actual Data</h2>', unsafe_allow_html=True)
-                    st.write(predicted_value)
+                    st.write(predicted_value.sort_values(by=predicted_value.columns[0], ascending=False))
 
                     plotActualPredictedValue(predicted_value)
 
@@ -1775,7 +1770,9 @@ if stock_symbol != "":
                         st.markdown('<h2 class="subheader">Stock Prices with Indicator Data</h2>', unsafe_allow_html=True)
 
                         stock_data.to_csv(os.path.join(PROJECT_FOLDER, 'data_'+stock_symbol+'.csv'), index=False)
-                        st.write(stock_data.tail(50))
+                        
+                        st.dataframe(stock_data.tail(50).sort_values(by=stock_data.columns[0], ascending=False))
+
 
                         # Create a subplot figure with 3 rows
                         fig = go.Figure()
@@ -1822,7 +1819,7 @@ if stock_symbol != "":
 
                         st.plotly_chart(fig)
 
-                        stockIndicatorForSwing(stock_data)
+                        # stockIndicatorForSwing(stock_data)
 
                         menu_option_trained = st.radio(
                             "Choose an option:", 
@@ -1895,7 +1892,8 @@ if stock_symbol != "":
                             test_predictions_baseline.to_csv(os.path.join(PROJECT_FOLDER, 'predictions.csv'))
 
                             st.markdown('<h2 class="subheader">Predicted and Actual Data</h2>', unsafe_allow_html=True)
-                            st.write(test_predictions_baseline.tail(50))
+                            
+                            st.write(test_predictions_baseline.tail(50).sort_values(by=test_predictions_baseline.columns[0], ascending=False)) 
                             # print(test_predictions_baseline)
                             plotActualPredictedValue(test_predictions_baseline.tail(50))
 
@@ -2056,7 +2054,7 @@ if stock_symbol != "":
                             predicted_value=pd.read_csv(os.path.join(PROJECT_FOLDER, 'predictions.csv'))
                             predicted_value = predicted_value.drop(columns=['Unnamed: 0', 'Datetime.1'], errors='ignore')
                             st.markdown('<h2 class="subheader">Predicted and Actual Data</h2>', unsafe_allow_html=True)
-                            st.write(predicted_value.tail(50))
+                            st.write(predicted_value.tail(50).sort_values(by=predicted_value.columns[0], ascending=False)) 
 
                             plotActualPredictedValue(predicted_value.tail(50))
 
