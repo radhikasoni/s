@@ -1811,6 +1811,9 @@ if stock_symbol != "":
                         stock_data = calculate_atr(stock_data)  
                         stock_data = calculate_stochastic(stock_data)
                         stock_data = generate_signals(stock_data)
+                        stock_data['VWAP'] = (stock_data['Volume'] * (stock_data['High'] + stock_data['Low'] + stock_data['Close']) / 3).cumsum() / stock_data['Volume'].cumsum()
+                        stock_data['Avg_Volume'] = round(stock_data['Volume'].rolling(window=10).mean(),0)
+                        stock_data['ATR'] = stock_data['True Range'].rolling(window=10).mean() 
                         stock_data.dropna(inplace=True)
 
                         st.markdown('<h2 class="subheader">Stock Prices with Indicator Data</h2>', unsafe_allow_html=True)
@@ -1879,7 +1882,7 @@ if stock_symbol != "":
                         # Set the data frame index using column Date
                         test_data = test_data.set_index('Datetime')
 
-                        train_scaled = scaler.fit_transform(training_data[['Open', 'High', 'Low', 'Close', 'Volume', 'RSI', 'SMA',  '%K', '%D', 'Upper_Band', 'Lower_Band']])
+                        train_scaled = scaler.fit_transform(training_data[['Open', 'High', 'Low', 'Close', 'Volume', 'RSI', 'SMA', 'MACD', 'Signal_Line', '%K', '%D', 'Upper_Band', 'Lower_Band', 'ATR', 'VWAP']])
                         
                         # Training Data Transformation
                         x_train = []
@@ -1891,7 +1894,7 @@ if stock_symbol != "":
                         x_train, y_train = np.array(x_train), np.array(y_train)
                         total_data = pd.concat((training_data, test_data), axis=0)
                         inputs = total_data[len(total_data) - len(test_data) - TIME_STEPS:]
-                        test_scaled = scaler.fit_transform(inputs[['Open', 'High', 'Low', 'Close', 'Volume', 'RSI', 'SMA', '%K', '%D', 'Upper_Band', 'Lower_Band']])
+                        test_scaled = scaler.fit_transform(inputs[['Open', 'High', 'Low', 'Close', 'Volume', 'RSI', 'SMA', 'MACD', 'Signal_Line', '%K', '%D', 'Upper_Band', 'Lower_Band', 'ATR', 'VWAP']])
                         
                         # Testing Data Transformation
                         x_test = []
@@ -1960,7 +1963,7 @@ if stock_symbol != "":
                             predicted_close = scaler.inverse_transform(np.column_stack((
                                 np.zeros((len(predictions), 3)),  # Placeholders for Open, High, Low
                                 predictions,  # Predicted Close (assuming it is the first column of predictions)
-                                np.zeros((len(predictions), 7))  # Placeholder for remaining features
+                                np.zeros((len(predictions), 11))  # Placeholder for remaining features
                             )))[:, 3]  # Here we select index 3 for 'Close' if 'Close' is the fourth column
                         
                             predicted_dates = generate_market_time_range_daily(PREDICT_START_DATE, PREDICTED_TIME)
@@ -2125,7 +2128,7 @@ if stock_symbol != "":
                             predicted_close = scaler.inverse_transform(np.column_stack((
                                 np.zeros((len(predictions), 3)),  # Placeholders for Open, High, Low
                                 predictions,  # Predicted Close (assuming it is the first column of predictions)
-                                np.zeros((len(predictions), 7))  # Placeholder for remaining features
+                                np.zeros((len(predictions), 11))  # Placeholder for remaining features
                             )))[:, 3]  # Here we select index 3 for 'Close' if 'Close' is the fourth column
 
                             predicted_dates = generate_market_time_range_daily(PREDICT_START_DATE, PREDICTED_TIME)
