@@ -1420,6 +1420,7 @@ if stock_symbol != "":
                         'Datetime': predicted_dates,
                         'Predicted Close Price': predicted_close,
                     })
+                    print("predicted_dates: ", predicted_dates)
                     close_data.to_csv(os.path.join(PROJECT_FOLDER, "predicted_data.csv"), index=False)
 
                     close_data['SMA'] = close_data['Predicted Close Price'].rolling(WINDOW).mean()
