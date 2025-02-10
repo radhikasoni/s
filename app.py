@@ -86,33 +86,34 @@ def generate_market_time_range_5_minute(start_date, periods):
         current_date += timedelta(days=1)  # Move to the next day
     return pd.DatetimeIndex(timestamps)
 
-
 def generate_market_time_range(start_date, periods, interval_minutes):
     """
     Generates a range of timestamps within stock market hours (9:15 AM to 3:30 PM) for a given number of periods.
-    Each period corresponds to the specified interval in minutes (e.g., 15 minutes or 1 hour).
-    
-    Args:
-        start_date (datetime): The starting datetime.
-        periods (int): Number of periods to generate.
-        interval_minutes (int): Time interval in minutes (e.g., 15 for 15-minute prediction).
-    
-    Returns:
-        pd.DatetimeIndex: A Pandas DatetimeIndex of the generated timestamps.
     """
     market_open = time(9, 15)   # 9:15 AM
     market_close = time(15, 30) # 3:30 PM
     timestamps = []
-    current_datetime = start_date
+    
+    # Check if start_date has a timezone
+    if start_date.tzinfo is not None:
+        tz = start_date.tzinfo  # Get the timezone
+    else:
+        tz = None  # Naive datetime
 
+    current_datetime = start_date
     count = 0
+
     while count < periods:
         # Ensure we start within market hours
         if current_datetime.time() < market_open:
             current_datetime = datetime.datetime.combine(current_datetime.date(), market_open)
         elif current_datetime.time() > market_close:
             current_datetime = datetime.datetime.combine(current_datetime.date() + timedelta(days=1), market_open)
-        
+
+        # Apply timezone if necessary
+        if tz:
+            current_datetime = current_datetime.replace(tzinfo=tz)
+
         # Generate timestamps within trading hours
         while current_datetime.time() <= market_close and count < periods:
             timestamps.append(current_datetime)
@@ -122,7 +123,9 @@ def generate_market_time_range(start_date, periods, interval_minutes):
             # Stop if next timestamp exceeds market close
             if current_datetime.time() > market_close:
                 current_datetime = datetime.datetime.combine(current_datetime.date() + timedelta(days=1), market_open)
-    
+                if tz:
+                    current_datetime = current_datetime.replace(tzinfo=tz)
+
     return pd.DatetimeIndex(timestamps)
 
 def generate_market_time_range_daily(start_date, days):
