@@ -25,6 +25,7 @@ from ta.volatility import AverageTrueRange
 import traceback
 from plotly.subplots import make_subplots
 import pytz
+from sklearn.metrics import mean_absolute_error, mean_squared_error
 
 tz = pytz.timezone("Asia/Kolkata")  # Indian time zone
 
@@ -34,6 +35,12 @@ sma_50 = 0
 ema_100 = 0
 ema_50 = 0
 WINDOW = 5
+mae = 0
+mse = 0
+rmse = 0
+mape = 0
+accuracy = 0
+
 if "previous_symbol" not in st.session_state:
     st.session_state.previous_symbol = ""
 
@@ -480,6 +487,38 @@ def generate_signals(data):
 
     data['B/S_Signal'] = signals  # Add new column for signals
     return data
+
+def get_accuracy(actual, predicted):
+    # Calculate MAE
+    mae = mean_absolute_error(actual, predicted)
+    print(f"Mean Absolute Error (MAE): {mae}")
+
+    # Calculate MSE
+    mse = mean_squared_error(actual, predicted)
+    print(f"Mean Squared Error (MSE): {mse}")
+
+    # Calculate RMSE
+    rmse = mse ** 0.5
+    print(f"Root Mean Squared Error (RMSE): {rmse}")
+
+    # Calculate MAPE
+    mape = np.mean(np.abs((actual - predicted) / actual)) * 100
+    print(f"Mean Absolute Percentage Error (MAPE): {mape:.2f}%")
+
+    # Calculate accuracy
+    accuracy = 100 - mape
+    print(f"Accuracy: {accuracy:.2f}%")
+    st.markdown(
+        f"<p style='font-size:12px;'>"
+        f"<b>Mean Absolute Error (MAE):</b> {mae:.4f} | "
+        f"<b>Mean Squared Error (MSE):</b> {mse:.4f} | "
+        f"<b>Root Mean Squared Error (RMSE):</b> {rmse:.4f} | "
+        f"<b>Mean Absolute Percentage Error (MAPE):</b> {mape:.2f}% | "
+        f"<b>Accuracy:</b> {accuracy:.2f}%"
+        f"</p>",
+        unsafe_allow_html=True
+    )
+
 
 # Header formatting using Markdown and CSS
 header_style = """
@@ -1389,6 +1428,7 @@ if stock_symbol != "":
                     test_predictions_baseline.to_csv(os.path.join(PROJECT_FOLDER, 'predictions.csv'))
 
                     st.markdown('<h2 class="subheader">Predicted and Actual Data</h2>', unsafe_allow_html=True)
+                    get_accuracy(test_predictions_baseline[f'{stock_symbol}_actual'].values, test_predictions_baseline[f'{stock_symbol}_predicted'].values)
                     
                     st.write(test_predictions_baseline.tail(50).sort_values(by=test_predictions_baseline.columns[0], ascending=False)) 
                     # print(test_predictions_baseline)
@@ -1565,6 +1605,8 @@ if stock_symbol != "":
                     predicted_value = predicted_value.drop(columns=['Unnamed: 0', 'Datetime.1'], errors='ignore')
                     predicted_value = predicted_value.tail(50)
                     st.markdown('<h2 class="subheader">Predicted and Actual Data</h2>', unsafe_allow_html=True)
+                    get_accuracy(predicted_value[f'{stock_symbol}_actual'].values, predicted_value[f'{stock_symbol}_predicted'].values)
+                    
                     st.write(predicted_value.sort_values(by=predicted_value.columns[0], ascending=False))
 
                     plotActualPredictedValue(predicted_value)
@@ -1896,6 +1938,7 @@ if stock_symbol != "":
                             test_predictions_baseline.to_csv(os.path.join(PROJECT_FOLDER, 'predictions.csv'))
 
                             st.markdown('<h2 class="subheader">Predicted and Actual Data</h2>', unsafe_allow_html=True)
+                            get_accuracy(test_predictions_baseline[f'{stock_symbol}_actual'].values, test_predictions_baseline[f'{stock_symbol}_predicted'].values)
                             
                             st.write(test_predictions_baseline.tail(50).sort_values(by=test_predictions_baseline.columns[0], ascending=False)) 
                             # print(test_predictions_baseline)
@@ -2058,6 +2101,8 @@ if stock_symbol != "":
                             predicted_value=pd.read_csv(os.path.join(PROJECT_FOLDER, 'predictions.csv'))
                             predicted_value = predicted_value.drop(columns=['Unnamed: 0', 'Datetime.1'], errors='ignore')
                             st.markdown('<h2 class="subheader">Predicted and Actual Data</h2>', unsafe_allow_html=True)
+                            get_accuracy(predicted_value[f'{stock_symbol}_actual'].values, predicted_value[f'{stock_symbol}_predicted'].values)
+                    
                             st.write(predicted_value.tail(50).sort_values(by=predicted_value.columns[0], ascending=False)) 
 
                             plotActualPredictedValue(predicted_value.tail(50))
