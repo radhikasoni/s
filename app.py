@@ -24,7 +24,9 @@ from ta.trend import MACD
 from ta.volatility import AverageTrueRange
 import traceback
 from plotly.subplots import make_subplots
+import pytz
 
+tz = pytz.timezone("Asia/Kolkata")  # Indian time zone
 
 PROJECT_FOLDER = ''
 sma_100 = 0
@@ -981,7 +983,7 @@ if stock_symbol != "":
     if menu_option == "Day Trading Forcast":
         try:
             # Fetch data for the last 8 days with a 1-minute interval
-            end_date = datetime.datetime.now()
+            end_date = datetime.datetime.now(tz)
             start_date = end_date - timedelta(days=59)
             last_15_day = end_date - timedelta(days=15)
             validation_date = pd.to_datetime(last_15_day)  
@@ -1228,12 +1230,12 @@ if stock_symbol != "":
                 # So, 6 * 12 = 72 intervals per day, and for 3 days, the total periods are 216
                 
                 if prediction_size_menu == "Next 15-minute prediction":
-                    PREDICT_START_DATE = datetime.datetime.now()
+                    PREDICT_START_DATE = datetime.datetime.now(tz)
                     PREDICTED_TIME = 3
                     stock_data['SMA'] = sma_5
                     WINDOW = 5
                 elif prediction_size_menu == "Next 1-hour prediction":
-                    PREDICT_START_DATE = datetime.datetime.now()
+                    PREDICT_START_DATE = datetime.datetime.now(tz)
                     PREDICTED_TIME = 12
                     stock_data['SMA'] = sma_5
                     WINDOW = 5
@@ -1243,17 +1245,17 @@ if stock_symbol != "":
                     stock_data['SMA'] = sma_5
                     WINDOW = 20
                 elif prediction_size_menu == "Next day prediction":
-                    PREDICT_START_DATE = datetime.datetime.now() + timedelta(days=1)
+                    PREDICT_START_DATE = datetime.datetime.today() + timedelta(days=1)
                     PREDICTED_TIME = 144
                     stock_data['SMA'] = sma_20
                     WINDOW = 20
                 elif prediction_size_menu == "Next 2-day prediction":
-                    PREDICT_START_DATE = datetime.datetime.now() + timedelta(days=2)
+                    PREDICT_START_DATE = datetime.datetime.today() + timedelta(days=2)
                     PREDICTED_TIME = 216
                     stock_data['SMA'] = sma_20
                     WINDOW = 20
                 else:
-                    PREDICT_START_DATE = datetime.datetime.now()
+                    PREDICT_START_DATE = datetime.datetime.now(tz)
                     PREDICTED_TIME = 3
                     stock_data['SMA'] = sma_5
                     WINDOW = 20
