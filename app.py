@@ -1929,40 +1929,40 @@ if stock_symbol != "":
                             print("None Selected")
                         elif menu_option_trained == "Train New Model":
 
-                            # model = Sequential([
-                            #     LSTM(64, return_sequences=True, input_shape=(x_train.shape[1], x_train.shape[2])),
-                            #     Dropout(0.2),
-                            #     LSTM(64, return_sequences=False),
-                            #     Dropout(0.2),
-                            #     Dense(32, activation='relu'),
-                            #     Dense(1)  # Predict Close Price
-                            # ])
-                            # model.compile(optimizer='adam', loss='mean_squared_error', metrics= tf.keras.metrics.MeanSquaredError(name='MSE'))
-                            # # Reduce learning rate on plateau
-                            # reduce_lr = ReduceLROnPlateau(monitor='val_loss', factor=0.5, patience=5, min_lr=1e-6)
-                            # history = model.fit(x_train, y_train, epochs=EPOCHS, batch_size=BATCH_SIZE, validation_data=(x_test, y_test),
-                            #                     callbacks=[reduce_lr, EarlyStopping(monitor='val_loss', patience=3, mode='min', verbose=1)])
-                            # Define the tuner
-                            tuner = kt.RandomSearch(
-                                build_model, 
-                                objective='val_loss', 
-                                max_trials=1, 
-                                executions_per_trial=1,
-                                directory='hyperparam_tuning',  # Save tuning results
-                                project_name='lstm_stock_forecast'
-                            )
+                            model = Sequential([
+                                LSTM(64, return_sequences=True, input_shape=(x_train.shape[1], x_train.shape[2])),
+                                Dropout(0.2),
+                                LSTM(64, return_sequences=False),
+                                Dropout(0.2),
+                                Dense(32, activation='relu'),
+                                Dense(1)  # Predict Close Price
+                            ])
+                            model.compile(optimizer='adam', loss='mean_squared_error', metrics= tf.keras.metrics.MeanSquaredError(name='MSE'))
+                            # Reduce learning rate on plateau
+                            reduce_lr = ReduceLROnPlateau(monitor='val_loss', factor=0.5, patience=5, min_lr=1e-6)
+                            history = model.fit(x_train, y_train, epochs=EPOCHS, batch_size=BATCH_SIZE, validation_data=(x_test, y_test),
+                                                callbacks=[reduce_lr, EarlyStopping(monitor='val_loss', patience=3, mode='min', verbose=1)])
+                            # # Define the tuner
+                            # tuner = kt.RandomSearch(
+                            #     build_model, 
+                            #     objective='val_loss', 
+                            #     max_trials=1, 
+                            #     executions_per_trial=1,
+                            #     directory='hyperparam_tuning',  # Save tuning results
+                            #     project_name='lstm_stock_forecast'
+                            # )
 
-                            # Perform hyperparameter search
-                            tuner.search(
-                                x_train, 
-                                y_train, 
-                                epochs=EPOCHS, 
-                                validation_data=(x_test, y_test),
-                                callbacks=[EarlyStopping(monitor='val_loss', patience=5, restore_best_weights=True)]
-                            )
+                            # # Perform hyperparameter search
+                            # tuner.search(
+                            #     x_train, 
+                            #     y_train, 
+                            #     epochs=EPOCHS, 
+                            #     validation_data=(x_test, y_test),
+                            #     callbacks=[EarlyStopping(monitor='val_loss', patience=5, restore_best_weights=True)]
+                            # )
 
-                            # Get the best model
-                            model = tuner.get_best_models(num_models=1)[0]
+                            # # Get the best model
+                            # model = tuner.get_best_models(num_models=1)[0]
                             print("saving weights")
                             model.save(os.path.join(PROJECT_FOLDER, 'close_model_weights.h5'))
                             test_predictions_baseline = model.predict(x_test)
@@ -2104,40 +2104,40 @@ if stock_symbol != "":
                             else:
                                 st.success("Please wait...")
                                 print(f"File '{file_name}' does NOT exist in the directory '{PROJECT_FOLDER}'.")
-                                # model = Sequential([
-                                #     LSTM(64, return_sequences=True, input_shape=(x_train.shape[1], x_train.shape[2])),
-                                #     Dropout(0.2),
-                                #     LSTM(64, return_sequences=False),
-                                #     Dropout(0.2),
-                                #     Dense(32, activation='relu'),
-                                #     Dense(1)  # Predict Close Price
-                                # ])
-                                # model.compile(optimizer='adam', loss='mean_squared_error', metrics= tf.keras.metrics.MeanSquaredError(name='MSE'))
-                                # # Reduce learning rate on plateau
-                                # reduce_lr = ReduceLROnPlateau(monitor='val_loss', factor=0.5, patience=5, min_lr=1e-6)
-                                # history = model.fit(x_train, y_train, epochs=EPOCHS, batch_size=BATCH_SIZE, validation_data=(x_test, y_test),
-                                #                     callbacks=[reduce_lr, EarlyStopping(monitor='val_loss', patience=3, mode='min', verbose=1)])
-                                # Define the tuner
-                                tuner = kt.RandomSearch(
-                                    build_model, 
-                                    objective='val_loss', 
-                                    max_trials=1, 
-                                    executions_per_trial=1,
-                                    directory='hyperparam_tuning',  # Save tuning results
-                                    project_name='lstm_stock_forecast'
-                                )
+                                model = Sequential([
+                                    LSTM(64, return_sequences=True, input_shape=(x_train.shape[1], x_train.shape[2])),
+                                    Dropout(0.2),
+                                    LSTM(64, return_sequences=False),
+                                    Dropout(0.2),
+                                    Dense(32, activation='relu'),
+                                    Dense(1)  # Predict Close Price
+                                ])
+                                model.compile(optimizer='adam', loss='mean_squared_error', metrics= tf.keras.metrics.MeanSquaredError(name='MSE'))
+                                # Reduce learning rate on plateau
+                                reduce_lr = ReduceLROnPlateau(monitor='val_loss', factor=0.5, patience=5, min_lr=1e-6)
+                                history = model.fit(x_train, y_train, epochs=EPOCHS, batch_size=BATCH_SIZE, validation_data=(x_test, y_test),
+                                                    callbacks=[reduce_lr, EarlyStopping(monitor='val_loss', patience=3, mode='min', verbose=1)])
+                                # # Define the tuner
+                                # tuner = kt.RandomSearch(
+                                #     build_model, 
+                                #     objective='val_loss', 
+                                #     max_trials=1, 
+                                #     executions_per_trial=1,
+                                #     directory='hyperparam_tuning',  # Save tuning results
+                                #     project_name='lstm_stock_forecast'
+                                # )
     
-                                # Perform hyperparameter search
-                                tuner.search(
-                                    x_train, 
-                                    y_train, 
-                                    epochs=EPOCHS, 
-                                    validation_data=(x_test, y_test),
-                                    callbacks=[EarlyStopping(monitor='val_loss', patience=5, restore_best_weights=True)]
-                                )
+                                # # Perform hyperparameter search
+                                # tuner.search(
+                                #     x_train, 
+                                #     y_train, 
+                                #     epochs=EPOCHS, 
+                                #     validation_data=(x_test, y_test),
+                                #     callbacks=[EarlyStopping(monitor='val_loss', patience=5, restore_best_weights=True)]
+                                # )
     
-                                # Get the best model
-                                model = tuner.get_best_models(num_models=1)[0]
+                                # # Get the best model
+                                # model = tuner.get_best_models(num_models=1)[0]
                                 print("saving weights")
                                 model.save(os.path.join(PROJECT_FOLDER, 'close_model_weights.h5'))
                                 test_predictions_baseline = model.predict(x_test)
