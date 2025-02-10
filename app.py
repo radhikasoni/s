@@ -1243,12 +1243,12 @@ if stock_symbol != "":
                     stock_data['SMA'] = sma_5
                     WINDOW = 20
                 elif prediction_size_menu == "Next day prediction":
-                    PREDICT_START_DATE = datetime.now() + timedelta(days=1)
+                    PREDICT_START_DATE = datetime.datetime.now() + timedelta(days=1)
                     PREDICTED_TIME = 144
                     stock_data['SMA'] = sma_20
                     WINDOW = 20
                 elif prediction_size_menu == "Next 2-day prediction":
-                    PREDICT_START_DATE = datetime.now() + timedelta(days=2)
+                    PREDICT_START_DATE = datetime.datetime.now() + timedelta(days=2)
                     PREDICTED_TIME = 216
                     stock_data['SMA'] = sma_20
                     WINDOW = 20
