@@ -1398,6 +1398,9 @@ if stock_symbol != "":
                     predictions = model.predict(x_test)
                     # predictions = predictions[:PTEDICTED_TIME]
                     # y_test = y_test[:PTEDICTED_TIME]
+
+                    print("PREDICTED_TIME: ", PREDICTED_TIME)
+                    print("PREDICT_START_DATE: ", PREDICT_START_DATE)
                     
                     # Get current time and the next 15 minutes
                     if prediction_size_menu == "Next 15-minute prediction" or prediction_size_menu == "Next 1-hour prediction":
