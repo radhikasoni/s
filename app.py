@@ -579,7 +579,7 @@ stock_symbol = code[n]
 st.write(stock_symbol)
 
 
-EPOCHS = 5
+EPOCHS = 64
 BATCH_SIZE = 32
 TIME_STEPS = 60
 PROJECT_FOLDER = st.session_state.project_folder
