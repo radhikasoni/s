@@ -519,7 +519,24 @@ def get_accuracy(actual, predicted):
         unsafe_allow_html=True
     )
 
+def build_model(hp):
+    model = Sequential()
+    print(f"x_train shape: {x_train.shape}, x_test shape: {x_test.shape}")
+    model.add(LSTM(units=hp.Int('units', min_value=32, max_value=256, step=32),
+                   return_sequences=True, input_shape=(x_train.shape[1], x_train.shape[2])))
+    model.add(Dropout(hp.Float('dropout', 0.1, 0.5, step=0.1)))
+    model.add(LSTM(units=hp.Int('units_2', min_value=32, max_value=256, step=32)))  # Unique name for each parameter
+    model.add(Dropout(hp.Float('dropout_2', 0.1, 0.5, step=0.1)))
+    model.add(Dense(1, activation='linear'))
 
+    model.compile(
+        loss='mse',
+        optimizer=keras.optimizers.Adam(
+            hp.Choice('learning_rate', values=[1e-2, 1e-3, 1e-4])
+        )
+    )
+    return model
+    
 # Header formatting using Markdown and CSS
 header_style = """
     <style>
@@ -1814,6 +1831,8 @@ if stock_symbol != "":
                         stock_data['VWAP'] = (stock_data['Volume'] * (stock_data['High'] + stock_data['Low'] + stock_data['Close']) / 3).cumsum() / stock_data['Volume'].cumsum()
                         stock_data['Avg_Volume'] = round(stock_data['Volume'].rolling(window=10).mean(),0)
                         stock_data['ATR'] = stock_data['True Range'].rolling(window=10).mean() 
+                        stock_data['Log_Close'] = np.log(stock_data['Close'])  # Stabilize fluctuations
+                        stock_data['Diff_Close'] = stock_data['Close'].diff()  # Remove trends
                         stock_data.dropna(inplace=True)
 
                         st.markdown('<h2 class="subheader">Stock Prices with Indicator Data</h2>', unsafe_allow_html=True)
@@ -1882,7 +1901,7 @@ if stock_symbol != "":
                         # Set the data frame index using column Date
                         test_data = test_data.set_index('Datetime')
 
-                        train_scaled = scaler.fit_transform(training_data[['Open', 'High', 'Low', 'Close', 'Volume', 'RSI', 'SMA', 'MACD', 'Signal_Line', '%K', '%D', 'Upper_Band', 'Lower_Band', 'ATR', 'VWAP']])
+                        train_scaled = scaler.fit_transform(training_data[['Open', 'High', 'Low', 'Close', 'Volume', 'RSI', 'SMA', 'MACD', 'Signal_Line', '%K', '%D', 'Upper_Band', 'Lower_Band', 'ATR', 'VWAP', 'Log_Close', 'Diff_Close']])
                         
                         # Training Data Transformation
                         x_train = []
@@ -1894,7 +1913,7 @@ if stock_symbol != "":
                         x_train, y_train = np.array(x_train), np.array(y_train)
                         total_data = pd.concat((training_data, test_data), axis=0)
                         inputs = total_data[len(total_data) - len(test_data) - TIME_STEPS:]
-                        test_scaled = scaler.fit_transform(inputs[['Open', 'High', 'Low', 'Close', 'Volume', 'RSI', 'SMA', 'MACD', 'Signal_Line', '%K', '%D', 'Upper_Band', 'Lower_Band', 'ATR', 'VWAP']])
+                        test_scaled = scaler.transform(inputs[['Open', 'High', 'Low', 'Close', 'Volume', 'RSI', 'SMA', 'MACD', 'Signal_Line', '%K', '%D', 'Upper_Band', 'Lower_Band', 'ATR', 'VWAP', 'Log_Close', 'Diff_Close']])
                         
                         # Testing Data Transformation
                         x_test = []
@@ -1908,19 +1927,40 @@ if stock_symbol != "":
                             print("None Selected")
                         elif menu_option_trained == "Train New Model":
 
-                            model = Sequential([
-                                LSTM(64, return_sequences=True, input_shape=(x_train.shape[1], x_train.shape[2])),
-                                Dropout(0.2),
-                                LSTM(64, return_sequences=False),
-                                Dropout(0.2),
-                                Dense(32, activation='relu'),
-                                Dense(1)  # Predict Close Price
-                            ])
-                            model.compile(optimizer='adam', loss='mean_squared_error', metrics= tf.keras.metrics.MeanSquaredError(name='MSE'))
-                            # Reduce learning rate on plateau
-                            reduce_lr = ReduceLROnPlateau(monitor='val_loss', factor=0.5, patience=5, min_lr=1e-6)
-                            history = model.fit(x_train, y_train, epochs=EPOCHS, batch_size=BATCH_SIZE, validation_data=(x_test, y_test),
-                                                callbacks=[reduce_lr, EarlyStopping(monitor='val_loss', patience=3, mode='min', verbose=1)])
+                            # model = Sequential([
+                            #     LSTM(64, return_sequences=True, input_shape=(x_train.shape[1], x_train.shape[2])),
+                            #     Dropout(0.2),
+                            #     LSTM(64, return_sequences=False),
+                            #     Dropout(0.2),
+                            #     Dense(32, activation='relu'),
+                            #     Dense(1)  # Predict Close Price
+                            # ])
+                            # model.compile(optimizer='adam', loss='mean_squared_error', metrics= tf.keras.metrics.MeanSquaredError(name='MSE'))
+                            # # Reduce learning rate on plateau
+                            # reduce_lr = ReduceLROnPlateau(monitor='val_loss', factor=0.5, patience=5, min_lr=1e-6)
+                            # history = model.fit(x_train, y_train, epochs=EPOCHS, batch_size=BATCH_SIZE, validation_data=(x_test, y_test),
+                            #                     callbacks=[reduce_lr, EarlyStopping(monitor='val_loss', patience=3, mode='min', verbose=1)])
+                            # Define the tuner
+                            tuner = kt.RandomSearch(
+                                build_model, 
+                                objective='val_loss', 
+                                max_trials=5, 
+                                executions_per_trial=1,
+                                directory='hyperparam_tuning',  # Save tuning results
+                                project_name='lstm_stock_forecast'
+                            )
+
+                            # Perform hyperparameter search
+                            tuner.search(
+                                x_train, 
+                                y_train, 
+                                epochs=EPOCHS, 
+                                validation_data=(x_test, y_test),
+                                callbacks=[EarlyStopping(monitor='val_loss', patience=5, restore_best_weights=True)]
+                            )
+
+                            # Get the best model
+                            model = tuner.get_best_models(num_models=1)[0]
                             print("saving weights")
                             model.save(os.path.join(PROJECT_FOLDER, 'close_model_weights.h5'))
                             test_predictions_baseline = model.predict(x_test)
@@ -1963,7 +2003,7 @@ if stock_symbol != "":
                             predicted_close = scaler.inverse_transform(np.column_stack((
                                 np.zeros((len(predictions), 3)),  # Placeholders for Open, High, Low
                                 predictions,  # Predicted Close (assuming it is the first column of predictions)
-                                np.zeros((len(predictions), 11))  # Placeholder for remaining features
+                                np.zeros((len(predictions), 13))  # Placeholder for remaining features
                             )))[:, 3]  # Here we select index 3 for 'Close' if 'Close' is the fourth column
                         
                             predicted_dates = generate_market_time_range_daily(PREDICT_START_DATE, PREDICTED_TIME)
@@ -2062,19 +2102,40 @@ if stock_symbol != "":
                             else:
                                 st.success("Please wait...")
                                 print(f"File '{file_name}' does NOT exist in the directory '{PROJECT_FOLDER}'.")
-                                model = Sequential([
-                                    LSTM(64, return_sequences=True, input_shape=(x_train.shape[1], x_train.shape[2])),
-                                    Dropout(0.2),
-                                    LSTM(64, return_sequences=False),
-                                    Dropout(0.2),
-                                    Dense(32, activation='relu'),
-                                    Dense(1)  # Predict Close Price
-                                ])
-                                model.compile(optimizer='adam', loss='mean_squared_error', metrics= tf.keras.metrics.MeanSquaredError(name='MSE'))
-                                # Reduce learning rate on plateau
-                                reduce_lr = ReduceLROnPlateau(monitor='val_loss', factor=0.5, patience=5, min_lr=1e-6)
-                                history = model.fit(x_train, y_train, epochs=EPOCHS, batch_size=BATCH_SIZE, validation_data=(x_test, y_test),
-                                                    callbacks=[reduce_lr, EarlyStopping(monitor='val_loss', patience=3, mode='min', verbose=1)])
+                                # model = Sequential([
+                                #     LSTM(64, return_sequences=True, input_shape=(x_train.shape[1], x_train.shape[2])),
+                                #     Dropout(0.2),
+                                #     LSTM(64, return_sequences=False),
+                                #     Dropout(0.2),
+                                #     Dense(32, activation='relu'),
+                                #     Dense(1)  # Predict Close Price
+                                # ])
+                                # model.compile(optimizer='adam', loss='mean_squared_error', metrics= tf.keras.metrics.MeanSquaredError(name='MSE'))
+                                # # Reduce learning rate on plateau
+                                # reduce_lr = ReduceLROnPlateau(monitor='val_loss', factor=0.5, patience=5, min_lr=1e-6)
+                                # history = model.fit(x_train, y_train, epochs=EPOCHS, batch_size=BATCH_SIZE, validation_data=(x_test, y_test),
+                                #                     callbacks=[reduce_lr, EarlyStopping(monitor='val_loss', patience=3, mode='min', verbose=1)])
+                                # Define the tuner
+                                tuner = kt.RandomSearch(
+                                    build_model, 
+                                    objective='val_loss', 
+                                    max_trials=5, 
+                                    executions_per_trial=1,
+                                    directory='hyperparam_tuning',  # Save tuning results
+                                    project_name='lstm_stock_forecast'
+                                )
+    
+                                # Perform hyperparameter search
+                                tuner.search(
+                                    x_train, 
+                                    y_train, 
+                                    epochs=EPOCHS, 
+                                    validation_data=(x_test, y_test),
+                                    callbacks=[EarlyStopping(monitor='val_loss', patience=5, restore_best_weights=True)]
+                                )
+    
+                                # Get the best model
+                                model = tuner.get_best_models(num_models=1)[0]
                                 print("saving weights")
                                 model.save(os.path.join(PROJECT_FOLDER, 'close_model_weights.h5'))
                                 test_predictions_baseline = model.predict(x_test)
@@ -2128,7 +2189,7 @@ if stock_symbol != "":
                             predicted_close = scaler.inverse_transform(np.column_stack((
                                 np.zeros((len(predictions), 3)),  # Placeholders for Open, High, Low
                                 predictions,  # Predicted Close (assuming it is the first column of predictions)
-                                np.zeros((len(predictions), 11))  # Placeholder for remaining features
+                                np.zeros((len(predictions), 13))  # Placeholder for remaining features
                             )))[:, 3]  # Here we select index 3 for 'Close' if 'Close' is the fourth column
 
                             predicted_dates = generate_market_time_range_daily(PREDICT_START_DATE, PREDICTED_TIME)
@@ -2161,7 +2222,7 @@ if stock_symbol != "":
                                 line=dict(color='red', width=2)
                             ))
 
-                                                        # Plot SMA Short (5-day)
+                            # Plot SMA Short (5-day)
                             close_fig.add_trace(go.Scatter(
                                 x=close_data['Datetime'], y=close_data['SMA_Short'],
                                 mode='lines', name='SMA Short (5-day)',
