@@ -1455,7 +1455,7 @@ if stock_symbol != "":
                     tuner = kt.RandomSearch(
                         build_model_intraday, 
                         objective='val_loss', 
-                        max_trials=5, 
+                        max_trials=1, 
                         executions_per_trial=1,
                         directory='hyperparam_tuning',  # Save tuning results
                         project_name='lstm_stock_forecast_intraday'
@@ -1633,7 +1633,7 @@ if stock_symbol != "":
                         tuner = kt.RandomSearch(
                             build_model_intraday, 
                             objective='val_loss', 
-                            max_trials=5, 
+                            max_trials=1, 
                             executions_per_trial=1,
                             directory='hyperparam_tuning',  # Save tuning results
                             project_name='lstm_stock_forecast_intraday'
