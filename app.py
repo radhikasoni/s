@@ -14,7 +14,7 @@ import secrets
 from ta.volatility import BollingerBands
 from statsmodels.tsa.holtwinters import SimpleExpSmoothing
 from tensorflow.keras import Sequential
-from tensorflow.keras.layers import Dropout, Dense, LSTM
+from tensorflow.keras.layers import Dropout, Dense, LSTM, MultiHeadAttention, Input
 import tensorflow as tf
 from tensorflow.keras.callbacks import EarlyStopping, ReduceLROnPlateau
 from company import company as company
@@ -24,10 +24,14 @@ from ta.trend import MACD
 from ta.volatility import AverageTrueRange
 import traceback
 from plotly.subplots import make_subplots
+import ta
 import pytz
 from sklearn.metrics import mean_absolute_error, mean_squared_error
 import keras_tuner as kt
 from tensorflow import keras
+from tensorflow.keras.models import Model
+from sklearn.model_selection import train_test_split
+import xgboost as xgb
 
 tz = pytz.timezone("Asia/Kolkata")  # Indian time zone
 
@@ -136,6 +140,7 @@ def generate_market_time_range(start_date, periods, interval_minutes):
                     current_datetime = current_datetime.replace(tzinfo=tz)
 
     return pd.DatetimeIndex(timestamps)
+
 
 def generate_market_time_range_daily(start_date, days):
     """
@@ -490,6 +495,14 @@ def generate_signals(data):
     data['B/S_Signal'] = signals  # Add new column for signals
     return data
 
+def time_feature(data):
+    data['Datetime'] = pd.to_datetime(data['Datetime'])
+    data['Weekday'] = data['Datetime'].dt.weekday  # 0=Monday, 6=Sunday
+    data['Month'] = data['Datetime'].dt.month  # 1-12
+    data['Quarter'] = data['Datetime'].dt.quarter  # 1-4
+    data['Year'] = (data['Datetime'].dt.year - data['Datetime'].dt.year.min()) / (data['Datetime'].dt.year.max() - data['Datetime'].dt.year.min())  # Normalize year
+    return data
+
 def get_accuracy(actual, predicted):
     # Calculate MAE
     mae = mean_absolute_error(actual, predicted)
@@ -521,24 +534,6 @@ def get_accuracy(actual, predicted):
         unsafe_allow_html=True
     )
 
-def build_model(hp):
-    model = Sequential()
-    print(f"x_train shape: {x_train.shape}, x_test shape: {x_test.shape}")
-    model.add(LSTM(units=hp.Int('units', min_value=32, max_value=256, step=32),
-                   return_sequences=True, input_shape=(x_train.shape[1], x_train.shape[2])))
-    model.add(Dropout(hp.Float('dropout', 0.1, 0.5, step=0.1)))
-    model.add(LSTM(units=hp.Int('units_2', min_value=32, max_value=256, step=32)))  # Unique name for each parameter
-    model.add(Dropout(hp.Float('dropout_2', 0.1, 0.5, step=0.1)))
-    model.add(Dense(1, activation='linear'))
-
-    model.compile(
-        loss='mse',
-        optimizer=keras.optimizers.Adam(
-            hp.Choice('learning_rate', values=[1e-2, 1e-3, 1e-4])
-        )
-    )
-    return model
-    
 # Header formatting using Markdown and CSS
 header_style = """
     <style>
@@ -613,6 +608,8 @@ def stockInfo(stock_symbol):
         # Fetch stock quote using yfinance
         quote_data = yf.Ticker(stock_symbol)
         quote_info = quote_data.info
+        earnings_dates = ticker.calendar.get('Earnings Date')
+        print("earnings_dates: ",earnings_dates)
         # Display relevant information in a tabular format
         quote_table = {
             "Category": ["Company Name", "Current Stock Price", "Change Perecentage", "Open Price", "High Price", "Low Price",
@@ -1019,6 +1016,41 @@ def stockIndicatorForIntraday(stock_data):
     except Exception as e:
         st.warning(f"An error occured while working on indicator '{e}' . Please enter a valid ticker.")
 
+
+def build_model(hp):
+    model = Sequential()
+    print(f"x_train shape: {x_train.shape}, x_test shape: {x_test.shape}")
+    model.add(LSTM(units=hp.Int('units', min_value=32, max_value=256, step=32), return_sequences=True, input_shape=(x_train.shape[1], x_train.shape[2])))
+    model.add(Dropout(hp.Float('dropout', 0.1, 0.5, step=0.1)))
+    model.add(LSTM(units=hp.Int('units_2', min_value=32, max_value=256, step=32)))  # Unique name for each parameter
+    model.add(Dropout(hp.Float('dropout_2', 0.1, 0.5, step=0.1)))
+    model.add(Dense(1, activation='linear'))
+
+    model.compile(
+        loss='mse',
+        optimizer=keras.optimizers.Adam(
+            hp.Choice('learning_rate', values=[1e-2, 1e-3, 1e-4])
+        )
+    )
+    return model
+
+def build_model_intraday(hp):
+    model = Sequential()
+    model.add(LSTM(units=hp.Int('units', min_value=32, max_value=256, step=32), return_sequences=True, input_shape=(x_train.shape[1], x_train.shape[2])))
+    model.add(Dropout(hp.Float('dropout', 0.1, 0.5, step=0.1)))
+    model.add(LSTM(units=hp.Int('units_2', min_value=32, max_value=256, step=32)))  # Unique name for each parameter
+    model.add(Dropout(hp.Float('dropout_2', 0.1, 0.5, step=0.1)))
+    model.add(Dense(1, activation='linear'))
+
+    model.compile(
+        loss='mse',
+        optimizer=keras.optimizers.Adam(
+            hp.Choice('learning_rate', values=[1e-2, 1e-3, 1e-4])
+        )
+    )
+    return model
+
+
 # Validate the stock symbol
 if stock_symbol:
     ticker = yf.Ticker(stock_symbol)
@@ -1270,6 +1302,9 @@ if stock_symbol != "":
 
                 daily_high_low = stock_data.groupby("Date").agg(Daily_High=("High", "max"), Daily_Low=("Low", "min")).reset_index()
                 stock_data = pd.merge(stock_data, daily_rsi_stats, on='Date', how='left')
+
+                stock_data['Log_Close'] = np.log(stock_data['Close'])  # Stabilize fluctuations
+                stock_data['Diff_Close'] = stock_data['Close'].diff()  # Remove trends
                 
                 prediction_size_menu = st.sidebar.radio(
                     "Select Prediction time limit",
@@ -1322,7 +1357,7 @@ if stock_symbol != "":
                     WINDOW = 20
 
                 # Drop rows with NaN values
-                stock_data=stock_data[['Datetime','Date','Open','High','Low','Close','TR','VwapSign','CheckVolume','DynVol','B/S_Signal','Reversal','Vol_Sell_Signal','Volume','Avg_Volume','VWAP','RSI','MACD','SMA','ATR','BB_lower', 'BB_upper']]
+                stock_data=stock_data[['Datetime','Date','Open','High','Low','Close','TR','VwapSign','CheckVolume','DynVol','B/S_Signal','Reversal','Vol_Sell_Signal','Volume','Avg_Volume','VWAP','RSI','MACD', 'MACD_signal', 'SMA','ATR','BB_lower', 'BB_upper', 'Log_Close', 'Diff_Close']]
                 stock_data.dropna(inplace=True)
                 
                 stock_data.to_csv(os.path.join(PROJECT_FOLDER, 'data_'+stock_symbol+'.csv'), index=False)
@@ -1388,7 +1423,7 @@ if stock_symbol != "":
                 # Set the data frame index using column Date
                 test_data = test_data.set_index('Datetime')
 
-                train_scaled = scaler.fit_transform(training_data[['Open','High','Low','Close','Volume','VWAP','RSI','MACD','SMA','ATR','BB_lower', 'BB_upper', 'TR', 'Avg_Volume']])
+                train_scaled = scaler.fit_transform(training_data[['Open','High','Low','Close','Volume','VWAP','RSI','MACD','SMA','ATR','BB_lower', 'BB_upper', 'TR', 'Avg_Volume', 'Log_Close', 'Diff_Close', 'MACD_signal']])
                 
                 # Training Data Transformation
                 x_train = []
@@ -1400,7 +1435,7 @@ if stock_symbol != "":
                 x_train, y_train = np.array(x_train), np.array(y_train)
                 total_data = pd.concat((training_data, test_data), axis=0)
                 inputs = total_data[len(total_data) - len(test_data) - TIME_STEPS:]
-                test_scaled = scaler.fit_transform(inputs[['Open','High','Low','Close','Volume','VWAP','RSI','MACD','SMA','ATR','BB_lower', 'BB_upper', 'TR', 'Avg_Volume']])
+                test_scaled = scaler.transform(inputs[['Open','High','Low','Close','Volume','VWAP','RSI','MACD','SMA','ATR','BB_lower', 'BB_upper', 'TR', 'Avg_Volume', 'Log_Close', 'Diff_Close', 'MACD_signal']])
                 
                 # Testing Data Transformation
                 x_test = []
@@ -1410,23 +1445,33 @@ if stock_symbol != "":
                     y_test.append(test_scaled[i, 3])
 
                 x_test, y_test = np.array(x_test), np.array(y_test)
+
+                print(f"Feature count - Training: {train_scaled.shape[1]}, Testing: {test_scaled.shape[1]}")
+
                 if menu_option_trained == "None Selected":
                     print("None Selected")
                 elif menu_option_trained == "Train New Model":
 
-                    model = Sequential([
-                        LSTM(64, return_sequences=True, input_shape=(x_train.shape[1], x_train.shape[2])),
-                        Dropout(0.2),
-                        LSTM(64, return_sequences=False),
-                        Dropout(0.2),
-                        Dense(32, activation='relu'),
-                        Dense(1)  # Predict Close Price
-                    ])
-                    model.compile(optimizer='adam', loss='mean_squared_error', metrics= tf.keras.metrics.MeanSquaredError(name='MSE'))
-                    # Reduce learning rate on plateau
-                    reduce_lr = ReduceLROnPlateau(monitor='val_loss', factor=0.5, patience=5, min_lr=1e-6)
-                    history = model.fit(x_train, y_train, epochs=EPOCHS, batch_size=BATCH_SIZE, validation_data=(x_test, y_test),
-                                        callbacks=[reduce_lr, EarlyStopping(monitor='val_loss', patience=3, mode='min', verbose=1)])
+                    tuner = kt.RandomSearch(
+                        build_model_intraday, 
+                        objective='val_loss', 
+                        max_trials=5, 
+                        executions_per_trial=1,
+                        directory='hyperparam_tuning',  # Save tuning results
+                        project_name='lstm_stock_forecast_intraday'
+                    )
+
+                    # Perform hyperparameter search
+                    tuner.search(
+                        x_train, 
+                        y_train, 
+                        epochs=EPOCHS, 
+                        validation_data=(x_test, y_test),
+                        callbacks=[EarlyStopping(monitor='val_loss', patience=5, restore_best_weights=True)]
+                    )
+
+                    # Get the best model
+                    model = tuner.get_best_models(num_models=1)[0]
                     print("saving weights")
                     model.save(os.path.join(PROJECT_FOLDER, 'close_model_weights.h5'))
                     test_predictions_baseline = model.predict(x_test)
@@ -1439,8 +1484,18 @@ if stock_symbol != "":
 
                     test_predictions_baseline = pd.DataFrame({
                             f'{stock_symbol}_actual': test_data['Close'],  # Actual Close price
-                            f'{stock_symbol}_predicted': x_test_predictions_baseline  # Predicted Close price
+                            f'{stock_symbol}_lstm_predicted': x_test_predictions_baseline  # Predicted Close price
                         })
+                    test_predictions_baseline[f'{stock_symbol}_residual'] = test_predictions_baseline[f'{stock_symbol}_actual'] - test_predictions_baseline[f'{stock_symbol}_lstm_predicted']
+
+                    X_train, X_test, y_train, y_test = train_test_split(test_predictions_baseline[[f'{stock_symbol}_lstm_predicted']], test_predictions_baseline[f'{stock_symbol}_residual'], test_size=0.2, shuffle=False)
+                    xgb_model = xgb.XGBRegressor(n_estimators=100, learning_rate=0.1, max_depth=5)
+                    xgb_model.fit(X_train, y_train)
+
+                    test_predictions_baseline[f'{stock_symbol}_xgb_residual_correction'] = xgb_model.predict(test_predictions_baseline[[f'{stock_symbol}_lstm_predicted']])
+                    test_predictions_baseline[f'{stock_symbol}_predicted'] = test_predictions_baseline[f'{stock_symbol}_lstm_predicted'] + test_predictions_baseline[f'{stock_symbol}_xgb_residual_correction']
+                    test_predictions_baseline = test_predictions_baseline.drop(columns=[f'{stock_symbol}_xgb_residual_correction', f'{stock_symbol}_lstm_predicted', f'{stock_symbol}_residual'])
+
                     test_predictions_baseline.index = test_data.index
                     test_predictions_baseline = test_predictions_baseline.reset_index()  # Moves index to a column
 
@@ -1449,6 +1504,7 @@ if stock_symbol != "":
                     st.markdown('<h2 class="subheader">Predicted and Actual Data</h2>', unsafe_allow_html=True)
                     get_accuracy(test_predictions_baseline[f'{stock_symbol}_actual'].values, test_predictions_baseline[f'{stock_symbol}_predicted'].values)
                     
+
                     st.write(test_predictions_baseline.tail(50).sort_values(by=test_predictions_baseline.columns[0], ascending=False)) 
                     # print(test_predictions_baseline)
                     plotActualPredictedValue(test_predictions_baseline.tail(50))
@@ -1460,13 +1516,7 @@ if stock_symbol != "":
 
                     # Perform inverse scaling on predicted values
                     predictions = model.predict(x_test)
-                    # predictions = predictions[:PTEDICTED_TIME]
-                    # y_test = y_test[:PTEDICTED_TIME]
 
-                    print("PREDICTED_TIME: ", PREDICTED_TIME)
-                    print("PREDICT_START_DATE: ", PREDICT_START_DATE)
-                    
-                    # Get current time and the next 15 minutes
                     if prediction_size_menu == "Next 15-minute prediction" or prediction_size_menu == "Next 1-hour prediction":
                         predicted_dates = generate_market_time_range(PREDICT_START_DATE, PREDICTED_TIME, 5)
                     else:
@@ -1479,7 +1529,7 @@ if stock_symbol != "":
                     predicted_close = scaler.inverse_transform(np.column_stack((
                         np.zeros((len(predictions), 3)),  # Placeholders for Open, High, Low
                         predictions,  # Predicted Close (assuming it is the first column of predictions)
-                        np.zeros((len(predictions), 10))  # Placeholder for remaining features
+                        np.zeros((len(predictions), 13))  # Placeholder for remaining features
                     )))[:, 3]  # Here we select index 3 for 'Close' if 'Close' is the fourth column
                     
                     # Add predictions and actual values to test_data
@@ -1487,7 +1537,6 @@ if stock_symbol != "":
                         'Datetime': predicted_dates,
                         'Predicted Close Price': predicted_close,
                     })
-                    print("predicted_dates: ", predicted_dates)
                     close_data.to_csv(os.path.join(PROJECT_FOLDER, "predicted_data.csv"), index=False)
 
                     close_data['SMA'] = close_data['Predicted Close Price'].rolling(WINDOW).mean()
@@ -1581,19 +1630,27 @@ if stock_symbol != "":
                     else:
                         st.success("Please wait...")
                         print(f"File '{file_name}' does NOT exist in the directory '{PROJECT_FOLDER}'.")
-                        model = Sequential([
-                            LSTM(64, return_sequences=True, input_shape=(x_train.shape[1], x_train.shape[2])),
-                            Dropout(0.2),
-                            LSTM(64, return_sequences=False),
-                            Dropout(0.2),
-                            Dense(32, activation='relu'),
-                            Dense(1)  # Predict Close Price
-                        ])
-                        model.compile(optimizer='adam', loss='mean_squared_error', metrics= tf.keras.metrics.MeanSquaredError(name='MSE'))
-                        # Reduce learning rate on plateau
-                        reduce_lr = ReduceLROnPlateau(monitor='val_loss', factor=0.5, patience=5, min_lr=1e-6)
-                        history = model.fit(x_train, y_train, epochs=EPOCHS, batch_size=BATCH_SIZE, validation_data=(x_test, y_test),
-                                            callbacks=[reduce_lr, EarlyStopping(monitor='val_loss', patience=3, mode='min', verbose=1)])
+                        tuner = kt.RandomSearch(
+                            build_model_intraday, 
+                            objective='val_loss', 
+                            max_trials=5, 
+                            executions_per_trial=1,
+                            directory='hyperparam_tuning',  # Save tuning results
+                            project_name='lstm_stock_forecast_intraday'
+                        )
+
+                        # Perform hyperparameter search
+                        tuner.search(
+                            x_train, 
+                            y_train, 
+                            epochs=EPOCHS, 
+                            validation_data=(x_test, y_test),
+                            callbacks=[EarlyStopping(monitor='val_loss', patience=5, restore_best_weights=True)]
+                        )
+
+                        # Get the best model
+                        model = tuner.get_best_models(num_models=1)[0]
+                        
                         print("saving weights")
                         model.save(os.path.join(PROJECT_FOLDER, 'close_model_weights.h5'))
                         test_predictions_baseline = model.predict(x_test)
@@ -1605,9 +1662,18 @@ if stock_symbol != "":
                         x_test_predictions_baseline = scaler.inverse_transform(test_predictions_baseline_padded)[:, 3]  # Extract only the first column
 
                         predicted_value = pd.DataFrame({
-                                f'{stock_symbol}_actual': test_data.Close,  # Actual Close price
-                                f'{stock_symbol}_predicted': x_test_predictions_baseline  # Predicted Close price
+                                f'{stock_symbol}_actual': test_data['Close'],  # Actual Close price
+                                f'{stock_symbol}_lstm_predicted': x_test_predictions_baseline  # Predicted Close price
                             })
+                        predicted_value[f'{stock_symbol}_residual'] = predicted_value[f'{stock_symbol}_actual'] - predicted_value[f'{stock_symbol}_lstm_predicted']
+
+                        X_train, X_test, y_train, y_test = train_test_split(predicted_value[[f'{stock_symbol}_lstm_predicted']], predicted_value[f'{stock_symbol}_residual'], test_size=0.2, shuffle=False)
+                        xgb_model = xgb.XGBRegressor(n_estimators=100, learning_rate=0.1, max_depth=5)
+                        xgb_model.fit(X_train, y_train)
+
+                        predicted_value[f'{stock_symbol}_xgb_residual_correction'] = xgb_model.predict(predicted_value[[f'{stock_symbol}_lstm_predicted']])
+                        predicted_value[f'{stock_symbol}_predicted'] = predicted_value[f'{stock_symbol}_lstm_predicted'] + predicted_value[f'{stock_symbol}_xgb_residual_correction']
+                        predicted_value = predicted_value.drop(columns=[f'{stock_symbol}_xgb_residual_correction', f'{stock_symbol}_lstm_predicted', f'{stock_symbol}_residual'])
 
                         predicted_value.index = test_data.index
                         predicted_value = predicted_value.drop(columns=['Unnamed: 0', 'Datetime.1'], errors='ignore')
@@ -1648,7 +1714,7 @@ if stock_symbol != "":
                     predicted_close = scaler.inverse_transform(np.column_stack((
                         np.zeros((len(predictions), 3)),  # Placeholders for Open, High, Low
                         predictions,  # Predicted Close (assuming it is the first column of predictions)
-                        np.zeros((len(predictions), 10))  # Placeholder for remaining features
+                        np.zeros((len(predictions), 13))  # Placeholder for remaining features
                     )))[:, 3]  # Here we select index 3 for 'Close' if 'Close' is the fourth column
 
                     if prediction_size_menu == "Next 15-minute prediction" or prediction_size_menu == "Next 1-hour prediction":
@@ -1830,11 +1896,15 @@ if stock_symbol != "":
                         stock_data = calculate_atr(stock_data)  
                         stock_data = calculate_stochastic(stock_data)
                         stock_data = generate_signals(stock_data)
+
+
                         stock_data['VWAP'] = (stock_data['Volume'] * (stock_data['High'] + stock_data['Low'] + stock_data['Close']) / 3).cumsum() / stock_data['Volume'].cumsum()
                         stock_data['Avg_Volume'] = round(stock_data['Volume'].rolling(window=10).mean(),0)
                         stock_data['ATR'] = stock_data['True Range'].rolling(window=10).mean() 
-                        # stock_data['Log_Close'] = np.log(stock_data['Close'])  # Stabilize fluctuations
-                        # stock_data['Diff_Close'] = stock_data['Close'].diff()  # Remove trends
+
+                        stock_data['Log_Close'] = np.log(stock_data['Close'])  # Stabilize fluctuations
+                        stock_data['Diff_Close'] = stock_data['Close'].diff()  # Remove trends
+
                         stock_data.dropna(inplace=True)
 
                         st.markdown('<h2 class="subheader">Stock Prices with Indicator Data</h2>', unsafe_allow_html=True)
@@ -1903,7 +1973,7 @@ if stock_symbol != "":
                         # Set the data frame index using column Date
                         test_data = test_data.set_index('Datetime')
 
-                        train_scaled = scaler.fit_transform(training_data[['Open', 'High', 'Low', 'Close', 'Volume', 'RSI', 'SMA', 'MACD', 'Signal_Line', '%K', '%D', 'Upper_Band', 'Lower_Band', 'ATR', 'VWAP']])
+                        train_scaled = scaler.fit_transform(training_data[['Open', 'High', 'Low', 'Close', 'Volume', 'RSI', 'MACD', 'Signal_Line', '%K', '%D', 'Upper_Band', 'Lower_Band', 'ATR', 'Log_Close', 'Diff_Close', 'SMA' ]])
                         
                         # Training Data Transformation
                         x_train = []
@@ -1915,7 +1985,7 @@ if stock_symbol != "":
                         x_train, y_train = np.array(x_train), np.array(y_train)
                         total_data = pd.concat((training_data, test_data), axis=0)
                         inputs = total_data[len(total_data) - len(test_data) - TIME_STEPS:]
-                        test_scaled = scaler.transform(inputs[['Open', 'High', 'Low', 'Close', 'Volume', 'RSI', 'SMA', 'MACD', 'Signal_Line', '%K', '%D', 'Upper_Band', 'Lower_Band', 'ATR', 'VWAP']])
+                        test_scaled = scaler.transform(inputs[['Open', 'High', 'Low', 'Close', 'Volume', 'RSI', 'MACD', 'Signal_Line', '%K', '%D', 'Upper_Band', 'Lower_Band', 'ATR', 'Log_Close', 'Diff_Close', 'SMA']])
                         
                         # Testing Data Transformation
                         x_test = []
@@ -1928,41 +1998,27 @@ if stock_symbol != "":
                         if menu_option_trained == "None Selected":
                             print("None Selected")
                         elif menu_option_trained == "Train New Model":
+                            # Define the tuner
+                            tuner = kt.RandomSearch(
+                                build_model, 
+                                objective='val_loss', 
+                                max_trials=1, 
+                                executions_per_trial=1,
+                                directory='hyperparam_tuning',  # Save tuning results
+                                project_name='lstm_stock_forecast'
+                            )
 
-                            model = Sequential([
-                                LSTM(64, return_sequences=True, input_shape=(x_train.shape[1], x_train.shape[2])),
-                                Dropout(0.2),
-                                LSTM(64, return_sequences=False),
-                                Dropout(0.2),
-                                Dense(32, activation='relu'),
-                                Dense(1)  # Predict Close Price
-                            ])
-                            model.compile(optimizer='adam', loss='mean_squared_error', metrics= tf.keras.metrics.MeanSquaredError(name='MSE'))
-                            # Reduce learning rate on plateau
-                            reduce_lr = ReduceLROnPlateau(monitor='val_loss', factor=0.5, patience=5, min_lr=1e-6)
-                            history = model.fit(x_train, y_train, epochs=EPOCHS, batch_size=BATCH_SIZE, validation_data=(x_test, y_test),
-                                                callbacks=[reduce_lr, EarlyStopping(monitor='val_loss', patience=3, mode='min', verbose=1)])
-                            # # Define the tuner
-                            # tuner = kt.RandomSearch(
-                            #     build_model, 
-                            #     objective='val_loss', 
-                            #     max_trials=1, 
-                            #     executions_per_trial=1,
-                            #     directory='hyperparam_tuning',  # Save tuning results
-                            #     project_name='lstm_stock_forecast'
-                            # )
+                            # Perform hyperparameter search
+                            tuner.search(
+                                x_train, 
+                                y_train, 
+                                epochs=EPOCHS, 
+                                validation_data=(x_test, y_test),
+                                callbacks=[EarlyStopping(monitor='val_loss', patience=5, restore_best_weights=True)]
+                            )
 
-                            # # Perform hyperparameter search
-                            # tuner.search(
-                            #     x_train, 
-                            #     y_train, 
-                            #     epochs=EPOCHS, 
-                            #     validation_data=(x_test, y_test),
-                            #     callbacks=[EarlyStopping(monitor='val_loss', patience=5, restore_best_weights=True)]
-                            # )
-
-                            # # Get the best model
-                            # model = tuner.get_best_models(num_models=1)[0]
+                            # Get the best model
+                            model = tuner.get_best_models(num_models=1)[0]
                             print("saving weights")
                             model.save(os.path.join(PROJECT_FOLDER, 'close_model_weights.h5'))
                             test_predictions_baseline = model.predict(x_test)
@@ -1975,8 +2031,18 @@ if stock_symbol != "":
 
                             test_predictions_baseline = pd.DataFrame({
                                     f'{stock_symbol}_actual': test_data['Close'],  # Actual Close price
-                                    f'{stock_symbol}_predicted': x_test_predictions_baseline  # Predicted Close price
+                                    f'{stock_symbol}_lstm_predicted': x_test_predictions_baseline  # Predicted Close price
                                 })
+                            test_predictions_baseline[f'{stock_symbol}_residual'] = test_predictions_baseline[f'{stock_symbol}_actual'] - test_predictions_baseline[f'{stock_symbol}_lstm_predicted']
+
+                            X_train, X_test, y_train, y_test = train_test_split(test_predictions_baseline[[f'{stock_symbol}_lstm_predicted']], test_predictions_baseline[f'{stock_symbol}_residual'], test_size=0.2, shuffle=False)
+                            xgb_model = xgb.XGBRegressor(n_estimators=100, learning_rate=0.1, max_depth=5)
+                            xgb_model.fit(X_train, y_train)
+
+                            test_predictions_baseline[f'{stock_symbol}_xgb_residual_correction'] = xgb_model.predict(test_predictions_baseline[[f'{stock_symbol}_lstm_predicted']])
+                            test_predictions_baseline[f'{stock_symbol}_predicted'] = test_predictions_baseline[f'{stock_symbol}_lstm_predicted'] + test_predictions_baseline[f'{stock_symbol}_xgb_residual_correction']
+                            test_predictions_baseline = test_predictions_baseline.drop(columns=[f'{stock_symbol}_xgb_residual_correction', f'{stock_symbol}_lstm_predicted', f'{stock_symbol}_residual'])
+
                             test_predictions_baseline.index = test_data.index
                             test_predictions_baseline = test_predictions_baseline.reset_index()  # Moves index to a column
 
@@ -1984,6 +2050,7 @@ if stock_symbol != "":
 
                             st.markdown('<h2 class="subheader">Predicted and Actual Data</h2>', unsafe_allow_html=True)
                             get_accuracy(test_predictions_baseline[f'{stock_symbol}_actual'].values, test_predictions_baseline[f'{stock_symbol}_predicted'].values)
+                    
                             
                             st.write(test_predictions_baseline.tail(50).sort_values(by=test_predictions_baseline.columns[0], ascending=False)) 
                             # print(test_predictions_baseline)
@@ -1996,8 +2063,7 @@ if stock_symbol != "":
 
                             # Perform inverse scaling on predicted values
                             predictions = model.predict(x_test)
-                            # predictions = predictions[:PTEDICTED_TIME]
-                            # y_test = y_test[:PTEDICTED_TIME]
+
                             predictions = predictions[-PREDICTED_TIME:]
                             y_test = y_test[-PREDICTED_TIME:]
 
@@ -2005,7 +2071,7 @@ if stock_symbol != "":
                             predicted_close = scaler.inverse_transform(np.column_stack((
                                 np.zeros((len(predictions), 3)),  # Placeholders for Open, High, Low
                                 predictions,  # Predicted Close (assuming it is the first column of predictions)
-                                np.zeros((len(predictions), 11))  # Placeholder for remaining features
+                                np.zeros((len(predictions), 12))  # Placeholder for remaining features
                             )))[:, 3]  # Here we select index 3 for 'Close' if 'Close' is the fourth column
                         
                             predicted_dates = generate_market_time_range_daily(PREDICT_START_DATE, PREDICTED_TIME)
@@ -2104,40 +2170,26 @@ if stock_symbol != "":
                             else:
                                 st.success("Please wait...")
                                 print(f"File '{file_name}' does NOT exist in the directory '{PROJECT_FOLDER}'.")
-                                model = Sequential([
-                                    LSTM(64, return_sequences=True, input_shape=(x_train.shape[1], x_train.shape[2])),
-                                    Dropout(0.2),
-                                    LSTM(64, return_sequences=False),
-                                    Dropout(0.2),
-                                    Dense(32, activation='relu'),
-                                    Dense(1)  # Predict Close Price
-                                ])
-                                model.compile(optimizer='adam', loss='mean_squared_error', metrics= tf.keras.metrics.MeanSquaredError(name='MSE'))
-                                # Reduce learning rate on plateau
-                                reduce_lr = ReduceLROnPlateau(monitor='val_loss', factor=0.5, patience=5, min_lr=1e-6)
-                                history = model.fit(x_train, y_train, epochs=EPOCHS, batch_size=BATCH_SIZE, validation_data=(x_test, y_test),
-                                                    callbacks=[reduce_lr, EarlyStopping(monitor='val_loss', patience=3, mode='min', verbose=1)])
-                                # # Define the tuner
-                                # tuner = kt.RandomSearch(
-                                #     build_model, 
-                                #     objective='val_loss', 
-                                #     max_trials=1, 
-                                #     executions_per_trial=1,
-                                #     directory='hyperparam_tuning',  # Save tuning results
-                                #     project_name='lstm_stock_forecast'
-                                # )
-    
-                                # # Perform hyperparameter search
-                                # tuner.search(
-                                #     x_train, 
-                                #     y_train, 
-                                #     epochs=EPOCHS, 
-                                #     validation_data=(x_test, y_test),
-                                #     callbacks=[EarlyStopping(monitor='val_loss', patience=5, restore_best_weights=True)]
-                                # )
-    
-                                # # Get the best model
-                                # model = tuner.get_best_models(num_models=1)[0]
+                                tuner = kt.RandomSearch(
+                                    build_model, 
+                                    objective='val_loss', 
+                                    max_trials=1, 
+                                    executions_per_trial=1,
+                                    directory='hyperparam_tuning',  # Save tuning results
+                                    project_name='lstm_stock_forecast'
+                                )
+
+                                # Perform hyperparameter search
+                                tuner.search(
+                                    x_train, 
+                                    y_train, 
+                                    epochs=EPOCHS, 
+                                    validation_data=(x_test, y_test),
+                                    callbacks=[EarlyStopping(monitor='val_loss', patience=5, restore_best_weights=True)]
+                                )
+
+                                # Get the best model
+                                model = tuner.get_best_models(num_models=1)[0]
                                 print("saving weights")
                                 model.save(os.path.join(PROJECT_FOLDER, 'close_model_weights.h5'))
                                 test_predictions_baseline = model.predict(x_test)
@@ -2149,9 +2201,18 @@ if stock_symbol != "":
                                 x_test_predictions_baseline = scaler.inverse_transform(test_predictions_baseline_padded)[:, 3]  # Extract only the first column
 
                                 predicted_value = pd.DataFrame({
-                                        f'{stock_symbol}_actual': test_data.Close,  # Actual Close price
-                                        f'{stock_symbol}_predicted': x_test_predictions_baseline  # Predicted Close price
+                                        f'{stock_symbol}_actual': test_data['Close'],  # Actual Close price
+                                        f'{stock_symbol}_lstm_predicted': x_test_predictions_baseline  # Predicted Close price
                                     })
+                                predicted_value[f'{stock_symbol}_residual'] = predicted_value[f'{stock_symbol}_actual'] - predicted_value[f'{stock_symbol}_lstm_predicted']
+
+                                X_train, X_test, y_train, y_test = train_test_split(predicted_value[[f'{stock_symbol}_lstm_predicted']], predicted_value[f'{stock_symbol}_residual'], test_size=0.2, shuffle=False)
+                                xgb_model = xgb.XGBRegressor(n_estimators=100, learning_rate=0.1, max_depth=5)
+                                xgb_model.fit(X_train, y_train)
+
+                                predicted_value[f'{stock_symbol}_xgb_residual_correction'] = xgb_model.predict(predicted_value[[f'{stock_symbol}_lstm_predicted']])
+                                predicted_value[f'{stock_symbol}_predicted'] = predicted_value[f'{stock_symbol}_lstm_predicted'] + predicted_value[f'{stock_symbol}_xgb_residual_correction']
+                                predicted_value = predicted_value.drop(columns=[f'{stock_symbol}_xgb_residual_correction', f'{stock_symbol}_lstm_predicted', f'{stock_symbol}_residual'])
 
                                 predicted_value.index = test_data.index
                                 predicted_value = predicted_value.drop(columns=['Unnamed: 0', 'Datetime.1'], errors='ignore')
@@ -2191,7 +2252,7 @@ if stock_symbol != "":
                             predicted_close = scaler.inverse_transform(np.column_stack((
                                 np.zeros((len(predictions), 3)),  # Placeholders for Open, High, Low
                                 predictions,  # Predicted Close (assuming it is the first column of predictions)
-                                np.zeros((len(predictions), 11))  # Placeholder for remaining features
+                                np.zeros((len(predictions), 12))  # Placeholder for remaining features
                             )))[:, 3]  # Here we select index 3 for 'Close' if 'Close' is the fourth column
 
                             predicted_dates = generate_market_time_range_daily(PREDICT_START_DATE, PREDICTED_TIME)
@@ -2224,7 +2285,7 @@ if stock_symbol != "":
                                 line=dict(color='red', width=2)
                             ))
 
-                            # Plot SMA Short (5-day)
+                                                        # Plot SMA Short (5-day)
                             close_fig.add_trace(go.Scatter(
                                 x=close_data['Datetime'], y=close_data['SMA_Short'],
                                 mode='lines', name='SMA Short (5-day)',
