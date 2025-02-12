@@ -29,7 +29,6 @@ import pytz
 from sklearn.metrics import mean_absolute_error, mean_squared_error
 import keras_tuner as kt
 from tensorflow import keras
-import attention
 from tensorflow.keras.models import Model
 from sklearn.model_selection import train_test_split
 import xgboost as xgb
@@ -1051,26 +1050,6 @@ def build_model_intraday(hp):
     )
     return model
 
-def build_model_attention(hp):
-    inputs = Input(shape=(x_train.shape[1], x_train.shape[2]))  # (Time Steps, Features)
-
-    # Transformer Multi-Head Self-Attention
-    x = MultiHeadAttention(num_heads=hp.Int("num_heads", 2, 8, step=2), key_dim=hp.Int("key_dim", 32, 128, step=32))(inputs, inputs)
-    
-    # LSTM Layer
-    x = LSTM(units=hp.Int("lstm_units", 32, 128, step=32), return_sequences=True)(x)
-    x = attention.Attention()(x)  # Attention Mechanism
-    x = LSTM(hp.Int("lstm_units_2", 32, 128, step=32))(x)
-
-    # Fully Connected Layers
-    x = Dense(hp.Int("dense_units", 16, 128, step=16), activation="relu")(x)
-    x = Dropout(hp.Float("dropout", 0.1, 0.5, step=0.1))(x)
-    output = Dense(1)(x)  # Predict Close Price
-
-    model = Model(inputs, output)
-    model.compile(optimizer="adam", loss="mse", metrics=["mae"])
-    
-    return model
 
 # Validate the stock symbol
 if stock_symbol:
